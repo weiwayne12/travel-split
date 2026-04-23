@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>旅伴分帳 使用說明</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Noto Sans TC',sans-serif;background:#faf7f2;color:#2d2a26;line-height:1.7;padding:20px 16px 60px}
+.container{max-width:600px;margin:0 auto}
+h1{font-size:32px;font-weight:900;text-align:center;color:#e8735a;margin-bottom:8px}
+.subtitle{text-align:center;color:#999;font-size:16px;margin-bottom:32px}
+.url-box{background:#fff;border:2px dashed #e8735a;border-radius:16px;padding:20px;text-align:center;margin-bottom:32px}
+.url-box .label{font-size:15px;color:#888;margin-bottom:8px}
+.url-box .url{font-size:20px;font-weight:700;color:#e8735a;word-break:break-all}
+.section{background:#fff;border-radius:20px;padding:24px;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.05)}
+.section-title{font-size:22px;font-weight:900;color:#e8735a;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.section-title .num{background:#e8735a;color:#fff;width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.step{font-size:18px;margin-bottom:14px;padding-left:8px}
+.step strong{color:#e8735a}
+.note{background:#fff8ed;border-left:4px solid #d4a843;padding:14px 16px;border-radius:8px;font-size:16px;margin-top:12px;color:#6b5a30}
+.tab-box{display:flex;gap:8px;margin-bottom:16px}
+.tab{flex:1;padding:10px;text-align:center;background:#f0ebe4;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;border:2px solid transparent}
+.tab.active{background:#e8735a;color:#fff;border-color:#e8735a}
+.platform-content{display:none}
+.platform-content.active{display:block}
+.warning{background:#fff0ee;border-left:4px solid #d44;padding:14px 16px;border-radius:8px;font-size:16px;margin-top:12px;color:#a33}
+.big-emoji{font-size:48px;text-align:center;margin:8px 0}
+ol{padding-left:20px}
+ol li{font-size:18px;margin-bottom:14px}
+ol li strong{color:#e8735a}
+.divider{height:2px;background:#f0ebe4;margin:20px 0}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>✈️ 旅伴分帳</h1>
+<p class="subtitle">大家一起記帳，最後自動算誰該付誰</p>
+
+<div class="url-box">
+  <div class="label">👇 打開這個網址就能用</div>
+  <div class="url">calm-kangaroo-1d0c28.netlify.app</div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="num">1</span>放到手機桌面（一次就好）</div>
+  <p style="font-size:16px;color:#888;margin-bottom:16px">這樣以後點桌面圖示就能用，跟一般 App 一樣</p>
+
+  <div class="tab-box">
+    <div class="tab active" onclick="showTab('ios')">🍎 iPhone</div>
+    <div class="tab" onclick="showTab('android')">🤖 安卓手機</div>
+  </div>
+
+  <div id="ios" class="platform-content active">
+    <ol>
+      <li>用 <strong>Safari</strong> 打開上面的網址</li>
+      <li>點畫面 <strong>下方</strong> 的「分享」按鈕（一個方框加上往上的箭頭）</li>
+      <li>往下滑，找到 <strong>「加入主畫面」</strong>，點下去</li>
+      <li>右上角點 <strong>「加入」</strong></li>
+    </ol>
+    <div class="note">完成後桌面就會出現一個 ✈️ 圖示，下次點它就能直接用</div>
+  </div>
+
+  <div id="android" class="platform-content">
+    <ol>
+      <li>用 <strong>Chrome</strong> 打開上面的網址</li>
+      <li>點畫面 <strong>右上角</strong> 的三個點 ⋮</li>
+      <li>找到 <strong>「加到主畫面」</strong> 或 <strong>「安裝應用程式」</strong>，點下去</li>
+      <li>點 <strong>「安裝」</strong> 或 <strong>「新增」</strong></li>
+    </ol>
+    <div class="note">完成後桌面就會出現一個 ✈️ 圖示，下次點它就能直接用</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="num">2</span>加入旅程</div>
+  <ol>
+    <li>打開 App</li>
+    <li>點 <strong>「🔗 加入旅程」</strong></li>
+    <li>輸入家人給你的 <strong>6 碼代碼</strong></li>
+    <li>輸入你的名字（例如「媽媽」、「阿明」）</li>
+    <li>點 <strong>「加入旅程」</strong></li>
+  </ol>
+  <div class="note">第一次加入後，下次打開 App 就會自動進去，不用再輸入代碼</div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="num">3</span>記一筆帳</div>
+  <ol>
+    <li>點 <strong>「💰 消費」</strong> 那一頁</li>
+    <li>點橘色的 <strong>「+ 新增消費」</strong> 大按鈕</li>
+    <li>選類別（吃飯、交通、住宿…）</li>
+    <li>輸入金額和幣別（在國外記得改幣別）</li>
+    <li>選 <strong>誰付的錢</strong>（誰刷卡、誰拿現金付）</li>
+    <li>選 <strong>要分給誰</strong>（預設是大家平分）</li>
+    <li>點 <strong>「新增」</strong> 完成</li>
+  </ol>
+  <div class="note">記錯了？點那筆帳就能修改或刪除</div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="num">4</span>看誰該付誰多少</div>
+  <ol>
+    <li>點 <strong>「🤝 結算」</strong> 那一頁</li>
+    <li>上半部會顯示<strong>每個人的收支</strong></li>
+    <li>下半部會顯示 <strong>「誰要轉帳給誰多少錢」</strong></li>
+    <li>照著轉帳就好，不用自己算</li>
+  </ol>
+  <div class="note">系統會自動算出最少的轉帳次數，不會讓大家轉來轉去</div>
+</div>
+
+<div class="divider"></div>
+
+<div class="section" style="background:#fff8ed">
+  <div class="section-title" style="color:#d4a843"><span class="num" style="background:#d4a843">？</span>常見問題</div>
+
+  <p style="font-size:18px;font-weight:700;margin-bottom:6px">Q：我看不到別人記的帳？</p>
+  <p style="font-size:16px;color:#666;margin-bottom:14px">A：把畫面往下拉重新整理一下，或關掉 App 再打開。資料會自動同步。</p>
+
+  <p style="font-size:18px;font-weight:700;margin-bottom:6px">Q：可以多人同時記帳嗎？</p>
+  <p style="font-size:16px;color:#666;margin-bottom:14px">A：可以！大家都加入同一個旅程後，誰記了帳，其他人幾秒內就會看到。</p>
+
+  <p style="font-size:18px;font-weight:700;margin-bottom:6px">Q：要付錢嗎？</p>
+  <p style="font-size:16px;color:#666;margin-bottom:14px">A：完全免費。</p>
+
+  <p style="font-size:18px;font-weight:700;margin-bottom:6px">Q：忘記代碼怎麼辦？</p>
+  <p style="font-size:16px;color:#666">A：請建立旅程的人打開 App，點右上角「📤 邀請」就能看到代碼。</p>
+</div>
+
+<p style="text-align:center;color:#bbb;font-size:14px;margin-top:24px">祝旅途愉快 🌍</p>
+
+</div>
+
+<script>
+function showTab(id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.platform-content').forEach(c=>c.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+</script>
+</body>
+</html>
