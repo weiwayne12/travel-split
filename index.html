@@ -193,10 +193,12 @@ function getMyTrips(){try{return JSON.parse(localStorage.getItem("my-trips"))||[
 function saveMyTrips(t){localStorage.setItem("my-trips",JSON.stringify(t))}
 
 // --- Settlement ---
+function expRate(exp,rates){return exp.customRate||rates[exp.currency]||1}
+
 function calcSettlement(members,expenses,rates){
   const bal={};members.forEach(m=>{bal[m.id]=0});
   expenses.forEach(exp=>{
-    const amt=exp.amount*(rates[exp.currency]||1);
+    const amt=exp.amount*expRate(exp,rates);
     const sp=exp.splits.filter(s=>members.some(m=>m.id===s.memberId));
     if(!sp.length)return;
     bal[exp.paidBy]=(bal[exp.paidBy]||0)+amt;
@@ -219,7 +221,7 @@ function calcSettlement(members,expenses,rates){
 function perPersonCalc(members,expenses,rates){
   const pp={};members.forEach(m=>{pp[m.id]={paid:0,owe:0}});
   expenses.forEach(exp=>{
-    const amt=exp.amount*(rates[exp.currency]||1);
+    const amt=exp.amount*expRate(exp,rates);
     if(pp[exp.paidBy])pp[exp.paidBy].paid+=amt;
     const sp=exp.splits.filter(s=>pp[s.memberId]);
     const tot=sp.reduce((s,x)=>s+x.ratio,0);
@@ -339,10 +341,11 @@ function renderTrip(){
     [...expenses].reverse().forEach(exp=>{
       const cat=CATEGORIES.find(c=>c.id===exp.category)||CATEGORIES[5];
       const cur=CURRENCIES.find(c=>c.code===exp.currency)||CURRENCIES[0];
-      const convHTML=exp.currency!==baseCurrency?`<div class="convert">≈ ${symbol}${fmtMoney(toDisplay(exp.amount*(rates[exp.currency]||1),baseCurrency,rates))}</div>`:"";
+      const convHTML=exp.currency!=="TWD"?`<div class="convert">≈ ${symbol}${fmtMoney(toDisplay(exp.amount*expRate(exp,rates),baseCurrency,rates))}</div>`:"";
+      const rateTag=exp.customRate?`<span style="font-size:10px;color:var(--c-gold);margin-left:4px" title="自訂匯率 1${exp.currency}=${exp.customRate}TWD">📌</span>`:"";
       html+=`<div class="card" onclick="doEditExpense('${exp.id}')">
         <span class="card-icon">${cat.icon}</span>
-        <div class="card-body"><div class="card-title">${exp.description||cat.name}</div><div class="card-sub">${(memberMap[exp.paidBy]||{name:"?"}).name} 代付 · ${exp.date}</div></div>
+        <div class="card-body"><div class="card-title">${exp.description||cat.name}${rateTag}</div><div class="card-sub">${(memberMap[exp.paidBy]||{name:"?"}).name} 代付 · ${exp.date}</div></div>
         <div class="card-amount"><div class="main">${cur.symbol}${exp.amount.toLocaleString()}</div>${convHTML}</div>
       </div>`;
     });
@@ -468,9 +471,23 @@ function renderModal(){
       <div><label class="label">說明</label><input class="input" id="expDesc" placeholder="例：午餐拉麵" value="${exp?.description||""}"></div>
       <div class="flex gap-8">
         <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="expAmount" placeholder="0" value="${exp?.amount||""}" inputmode="decimal"></div>
-        <div style="width:110px"><label class="label">幣別</label><select class="input" id="expCurrency" style="appearance:auto">`;
+        <div style="width:110px"><label class="label">幣別</label><select class="input" id="expCurrency" style="appearance:auto" onchange="onExpCurrencyChange(this.value)">`;
     CURRENCIES.forEach(c=>{body+=`<option value="${c.code}" ${c.code===curCurrency?"selected":""}>${c.symbol} ${c.code}</option>`;});
+    const tripRate=rates[curCurrency]||1;
+    const hasCustomRate=!!exp?.customRate;
     body+=`</select></div></div>
+      <div id="customRateRow" style="display:${curCurrency==="TWD"?"none":"block"}">
+        <label class="label">匯率</label>
+        <div class="flex gap-6 mb-8">
+          <button type="button" class="pill ${!hasCustomRate?"active":""}" id="rateShared" onclick="toggleExpCustomRate(false)">用旅程匯率</button>
+          <button type="button" class="pill ${hasCustomRate?"active":""}" id="rateCustom" onclick="toggleExpCustomRate(true)">自訂匯率</button>
+        </div>
+        <div id="customRateInputWrap" style="display:${hasCustomRate?"flex":"none"};align-items:center;gap:8px">
+          <span style="font-size:13px;white-space:nowrap">1 <span id="customRateCur">${curCurrency}</span> =</span>
+          <input type="number" class="input" id="expCustomRate" style="width:110px" value="${exp?.customRate||tripRate}" step="0.0001" inputmode="decimal" placeholder="${tripRate}">
+          <span style="font-size:13px">TWD</span>
+        </div>
+      </div>
       <div><label class="label">日期</label><input type="date" class="input" id="expDate" value="${exp?.date||today()}"></div>
       <div><label class="label">誰代付？</label><div class="flex flex-wrap gap-6" id="paidByArea">`;
     members.forEach(m=>{body+=badgeHTML(m,{selected:m.id===curPaidBy,clickId:`paidby-${m.id}`});});
@@ -669,13 +686,13 @@ window.doSetBaseCurrency=function(code){
 };
 
 // --- Expense modal state ---
-let expState={category:"food",paidBy:"",splitMembers:{},splitMode:"equal",customRatios:{}};
+let expState={category:"food",paidBy:"",splitMembers:{},splitMode:"equal",customRatios:{},useCustomRate:false};
 
 window.doAddExpense=function(){
   const members=STATE.tripData.members;
   if(members.length<2){alert("請先新增至少 2 位旅伴");setState({tab:"members"});return}
   STATE.editExpense=null;
-  expState={category:"food",paidBy:members[0]?.id||"",splitMembers:Object.fromEntries(members.map(m=>[m.id,true])),splitMode:"equal",customRatios:{}};
+  expState={category:"food",paidBy:members[0]?.id||"",splitMembers:Object.fromEntries(members.map(m=>[m.id,true])),splitMode:"equal",customRatios:{},useCustomRate:false};
   openModal("expense");
 };
 
@@ -689,18 +706,35 @@ window.doEditExpense=function(id){
     splitMembers:Object.fromEntries(exp.splits.map(s=>[s.memberId,true])),
     splitMode:allEqual?"equal":"custom",
     customRatios:Object.fromEntries(exp.splits.map(s=>[s.memberId,s.ratio])),
+    useCustomRate:!!exp.customRate,
   };
   openModal("expense");
 };
 
 window.setExpField=function(field,val){
   expState[field]=val;
-  // Only update the relevant buttons, don't re-render modal (would clear inputs)
   if(field==="category"){
     document.querySelectorAll("#expenseCatArea .pill").forEach(el=>{
       el.classList.toggle("active",el.dataset.cat===val);
     });
   }
+};
+
+window.toggleExpCustomRate=function(useCustom){
+  expState.useCustomRate=useCustom;
+  document.getElementById("rateShared")?.classList.toggle("active",!useCustom);
+  document.getElementById("rateCustom")?.classList.toggle("active",useCustom);
+  const wrap=document.getElementById("customRateInputWrap");
+  if(wrap)wrap.style.display=useCustom?"flex":"none";
+};
+
+window.onExpCurrencyChange=function(code){
+  const row=document.getElementById("customRateRow");
+  if(row)row.style.display=code==="TWD"?"none":"block";
+  const cur=document.getElementById("customRateCur");
+  if(cur)cur.textContent=code;
+  const input=document.getElementById("expCustomRate");
+  if(input){const r=STATE.tripData.rates[code]||1;input.placeholder=r;if(!expState.useCustomRate)input.value=r;}
 };
 
 window.setSplitMode=function(mode){
@@ -786,7 +820,8 @@ window.doSaveExpense=async function(){
     ratio:expState.splitMode==="custom"?(ratios[m.id]||expState.customRatios[m.id]||1):1,
   }));
 
-  const exp={description:desc,amount,currency,category:expState.category,paidBy:expState.paidBy,splits,date};
+  const customRateVal=expState.useCustomRate&&currency!=="TWD"?parseFloat($("expCustomRate")?.value)||null:null;
+  const exp={description:desc,amount,currency,category:expState.category,paidBy:expState.paidBy,splits,date,...(customRateVal?{customRate:customRateVal}:{customRate:null})};
 
   if(STATE.editExpense){
     await saveTripData(td=>({...td,expenses:td.expenses.map(e=>e.id===STATE.editExpense.id?{...exp,id:e.id}:e)}));
