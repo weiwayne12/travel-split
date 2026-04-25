@@ -129,6 +129,18 @@ input,select,button{font-family:var(--font);outline:none}
 
 /* Flex helpers */
 .flex{display:flex}.flex-wrap{flex-wrap:wrap}.gap-6{gap:6px}.gap-8{gap:8px}.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}.mb-12{margin-bottom:12px}.w-full{width:100%}
+
+/* Paste batch */
+.paste-btn{flex-shrink:0;padding:14px 16px;border-radius:14px;border:1.5px solid var(--c-border);background:#fff;color:var(--c-text);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
+.paste-textarea{width:100%;min-height:130px;padding:12px;border-radius:12px;border:1.5px solid var(--c-border);font-size:12px;font-family:monospace;background:var(--c-bg);resize:vertical;line-height:1.5}
+.paste-textarea:focus{border-color:var(--c-primary);outline:none}
+.paste-preview{margin-top:10px;max-height:180px;overflow-y:auto}
+.paste-row{font-size:13px;padding:6px 10px;border-radius:8px;margin-bottom:4px;display:flex;align-items:flex-start;gap:6px;line-height:1.4;word-break:break-all}
+.paste-ok{background:#f0fff4;color:#2d5a27}
+.paste-err{background:#fff0f0;color:#8b2020}
+.paste-icon{flex-shrink:0;font-size:13px;margin-top:1px}
+.paste-hint{font-size:12px;color:var(--c-sub);line-height:1.6;background:var(--c-light);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.paste-hint code{background:rgba(0,0,0,0.06);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px}
 </style>
 </head>
 <body>
@@ -337,7 +349,7 @@ function renderTrip(){
   <div class="content">`;
 
   if(tab==="expenses"){
-    html+=`<button class="btn-primary mb-12" onclick="doAddExpense()">+ 新增消費</button>`;
+    html+=`<div class="flex gap-8 mb-12"><button class="btn-primary" style="flex:1" onclick="doAddExpense()">+ 新增消費</button><button class="paste-btn" onclick="openModal('paste')">📋 批次</button></div>`;
     if(!expenses.length){
       html+=`<div class="empty"><div class="empty-icon">📝</div><p>還沒有消費紀錄</p></div>`;
     }
@@ -518,6 +530,33 @@ function renderModal(){
         ${exp?"儲存修改":"新增"}</button>`;
     if(exp)body+=`<button class="btn-danger" onclick="doDeleteExpense()">刪除這筆消費</button>`;
     body+=`</div>`;
+  }
+
+  if(modal==="paste"){
+    title="📋 批次新增消費";
+    const memberList=members.map(m=>m.name).join("、");
+    const template=`旅遊成員：${memberList}
+幣別選項：TWD、JPY、USD、EUR、KRW、GBP、THB、SGD、HKD、MYR、AUD、CNY
+類別選項：food(餐飲) transport(交通) hotel(住宿) ticket(門票) shopping(購物) other(其他)
+
+請把以下消費記錄轉成格式（每行一筆，TS| 開頭，共 8 欄）：
+TS|說明|金額|幣別|類別|日期(YYYY-MM-DD)|代付人|equal:成員1,成員2 或 custom:成員1=金額1,成員2=金額2
+
+--- 以下貼上消費描述 ---
+`;
+    body=`<div class="paste-hint">
+  把 AI 提示貼給 ChatGPT / Claude，AI 回傳的 <code>TS|...</code> 行再貼到下方即可一次匯入。<br>
+  <strong>格式：</strong><code>TS|說明|金額|幣別|類別|日期|代付人|equal:成員... 或 custom:成員=金額...</code>
+</div>
+<button class="btn-secondary mb-12" style="width:100%;font-size:13px" onclick="doCopyTemplate()">📄 複製 AI 提示範本</button>
+<label class="label">貼上 AI 回傳的結果</label>
+<textarea class="paste-textarea" id="pasteInput" placeholder="TS|午餐拉麵|1200|TWD|food|2026-04-25|Wayne|equal:Wayne,Alice&#10;TS|計程車|800|TWD|transport|2026-04-25|Alice|custom:Wayne=400,Alice=400" oninput="renderPastePreview()"></textarea>
+<div class="paste-preview" id="pastePreview"></div>
+<div class="flex gap-8 mt-12">
+  <button class="btn-secondary" style="flex:1" onclick="closeModal()">取消</button>
+  <button class="btn-primary" style="flex:2" id="pasteConfirmBtn" disabled onclick="doConfirmPaste()">請先貼上資料</button>
+</div>`;
+    window._pasteTemplate=template;
   }
 
   // Render modal overlay
@@ -838,6 +877,102 @@ window.doDeleteExpense=async function(){
   if(!confirm("確定刪除這筆消費？"))return;
   await saveTripData(td=>({...td,expenses:td.expenses.filter(e=>e.id!==STATE.editExpense.id)}));
   closeModal();
+};
+
+// ===================== PASTE BATCH =====================
+function parseExpenseLines(text,members){
+  return text.split('\n').map(l=>l.trim()).filter(l=>l.startsWith('TS|')).map(line=>{
+    const parts=line.split('|');
+    if(parts.length<8)return{ok:false,line,error:'欄位不足（需 8 欄）'};
+    const [,desc,amtStr,currency,category,date,paidByName,splitsStr]=parts;
+    const amount=parseFloat(amtStr);
+    if(!amount||amount<=0)return{ok:false,line,error:'金額無效'};
+    const cur=currency.trim().toUpperCase();
+    if(!CURRENCIES.find(c=>c.code===cur))return{ok:false,line,error:`不支援幣別：${cur}`};
+    const cat=category.trim().toLowerCase();
+    if(!CATEGORIES.find(c=>c.id===cat))return{ok:false,line,error:`不支援類別：${cat}`};
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date.trim()))return{ok:false,line,error:'日期格式錯誤（需 YYYY-MM-DD）'};
+    const paidByMember=members.find(m=>m.name.trim().toLowerCase()===paidByName.trim().toLowerCase());
+    if(!paidByMember)return{ok:false,line,error:`找不到成員：${paidByName.trim()}`};
+    const sp=splitsStr.trim();
+    let splits=[];
+    if(sp.startsWith('equal:')){
+      const names=sp.slice(6).split(',').map(n=>n.trim()).filter(Boolean);
+      for(const n of names){
+        const m=members.find(m=>m.name.trim().toLowerCase()===n.toLowerCase());
+        if(!m)return{ok:false,line,error:`找不到成員：${n}`};
+        splits.push({memberId:m.id,ratio:1});
+      }
+    }else if(sp.startsWith('custom:')){
+      const pairs=sp.slice(7).split(',').map(p=>p.trim()).filter(Boolean);
+      for(const pair of pairs){
+        const eq=pair.lastIndexOf('=');
+        if(eq===-1)return{ok:false,line,error:`custom 格式錯誤：${pair}`};
+        const n=pair.slice(0,eq).trim();
+        const ratio=parseFloat(pair.slice(eq+1));
+        if(!ratio||ratio<=0)return{ok:false,line,error:`金額無效：${pair}`};
+        const m=members.find(m=>m.name.trim().toLowerCase()===n.toLowerCase());
+        if(!m)return{ok:false,line,error:`找不到成員：${n}`};
+        splits.push({memberId:m.id,ratio});
+      }
+    }else{
+      return{ok:false,line,error:'分帳格式錯誤（需 equal:... 或 custom:...）'};
+    }
+    if(!splits.length)return{ok:false,line,error:'分帳成員不能為空'};
+    return{ok:true,line,exp:{id:genId(),description:desc.trim()||cat,amount,currency:cur,category:cat,date:date.trim(),paidBy:paidByMember.id,splits,customRate:null}};
+  });
+}
+
+window.renderPastePreview=function(){
+  const text=document.getElementById('pasteInput')?.value||'';
+  const members=STATE.tripData?.members||[];
+  const results=parseExpenseLines(text,members);
+  const preview=document.getElementById('pastePreview');
+  const btn=document.getElementById('pasteConfirmBtn');
+  if(!results.length){
+    if(preview)preview.innerHTML='';
+    if(btn){btn.disabled=true;btn.textContent='請先貼上資料';}
+    return;
+  }
+  const okCount=results.filter(r=>r.ok).length;
+  let html='';
+  results.forEach(r=>{
+    if(r.ok){
+      const cat=CATEGORIES.find(c=>c.id===r.exp.category)||CATEGORIES[5];
+      const cur=CURRENCIES.find(c=>c.code===r.exp.currency)||CURRENCIES[0];
+      const payer=(members.find(m=>m.id===r.exp.paidBy)||{name:'?'}).name;
+      html+=`<div class="paste-row paste-ok"><span class="paste-icon">✓</span><span>${cat.icon} ${r.exp.description} · ${cur.symbol}${r.exp.amount.toLocaleString()} · ${payer} 代付 · ${r.exp.date}</span></div>`;
+    }else{
+      html+=`<div class="paste-row paste-err"><span class="paste-icon">✕</span><span>${r.error}<br><span style="opacity:.6;font-size:11px">${r.line.slice(0,60)}${r.line.length>60?'...':''}</span></span></div>`;
+    }
+  });
+  if(preview)preview.innerHTML=html;
+  if(btn){
+    if(okCount>0){btn.disabled=false;btn.textContent=`確認新增 ${okCount} 筆${results.length>okCount?`（跳過 ${results.length-okCount} 筆錯誤）`:''}`;}
+    else{btn.disabled=true;btn.textContent='沒有可匯入的資料';}
+  }
+};
+
+window.doCopyTemplate=function(){
+  const tmpl=window._pasteTemplate||'';
+  navigator.clipboard?.writeText(tmpl).then(()=>{
+    const btn=event.target;
+    btn.textContent='✓ 已複製！貼給 AI 後把結果貼回下方';
+    btn.style.color='var(--c-green)';
+    setTimeout(()=>{btn.textContent='📄 複製 AI 提示範本';btn.style.color='';},3000);
+  });
+};
+
+window.doConfirmPaste=async function(){
+  const text=document.getElementById('pasteInput')?.value||'';
+  const members=STATE.tripData?.members||[];
+  const results=parseExpenseLines(text,members);
+  const toAdd=results.filter(r=>r.ok).map(r=>r.exp);
+  if(!toAdd.length)return;
+  await saveTripData(td=>({...td,expenses:[...td.expenses,...toAdd]}));
+  closeModal();
+  setState({tab:'expenses'});
+  alert(`✓ 已新增 ${toAdd.length} 筆消費`);
 };
 
 // ===================== INIT =====================
