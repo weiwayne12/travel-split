@@ -147,6 +147,18 @@ input,select,button{font-family:var(--font);outline:none}
 
 <div id="app"></div>
 
+<script>
+// iOS standalone (home-screen) cache busters — runs before module loads
+// 1. bfcache restore: force reload when page returns from back-forward cache
+window.addEventListener("pageshow",e=>{if(e.persisted)location.reload();});
+// 2. long-hidden auto-reload: if app was backgrounded > 20 min, fetch fresh
+let _lastHidden=0;
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden)_lastHidden=Date.now();
+  else if(_lastHidden&&Date.now()-_lastHidden>20*60*1000)location.reload();
+});
+</script>
+
 <script type="module">
 // Firebase SDK
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js";
@@ -368,6 +380,7 @@ function renderTrip(){
       <div class="header-actions">
         <button class="header-btn" onclick="openModal('share')">📤 邀請</button>
         <button class="header-btn" onclick="openModal('rates')">💱</button>
+        <button class="header-btn" onclick="doForceReload()" title="強制更新到最新版">🔄</button>
       </div>
     </div>
     <div class="total-bar"><span class="label">總花費（${baseCurrency}）</span><span class="amount">${symbol} ${fmtMoney(toDisplay(totalTWD,baseCurrency,rates))}</span></div>
@@ -787,6 +800,12 @@ window.doDeleteTrip=function(code){
   if(!confirm("確定要從列表移除？"))return;
   saveMyTrips(getMyTrips().filter(t=>t.code!==code));
   setState({});
+};
+
+window.doForceReload=function(){
+  // Bust iOS standalone cache: append a version query so HTML is fetched fresh
+  const url=location.pathname+"?v="+Date.now();
+  location.replace(url);
 };
 
 window.doLeave=function(){
