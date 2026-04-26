@@ -651,9 +651,25 @@ function renderModal(){
     body+=`</div></div>
       <div class="flex gap-8">
         <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="loanAmount" placeholder="0" value="${lf.amount||""}" inputmode="decimal"></div>
-        <div style="width:110px"><label class="label">幣別</label><select class="input" id="loanCurrency" style="appearance:auto">`;
+        <div style="width:110px"><label class="label">幣別</label><select class="input" id="loanCurrency" style="appearance:auto" onchange="onLoanCurrencyChange(this.value)">`;
     {const allowed=getAllowedCurrencies(td);const curLoan=lf.currency||"TWD";CURRENCIES.filter(c=>allowed.includes(c.code)||c.code===curLoan).forEach(c=>{body+=`<option value="${c.code}" ${c.code===curLoan?"selected":""}>${c.symbol} ${c.code}</option>`;});}
+    const loanCur=lf.currency||"TWD";
+    const loanTripRate=rates[loanCur]||1;
+    const loanHasCustom=!!lf.customRate;
     body+=`</select></div>
+      </div>
+      <div id="loanCustomRateRow" style="display:${loanCur==="TWD"?"none":"block"}">
+        <label class="label">匯率</label>
+        <div class="flex gap-6 mb-8">
+          <button type="button" class="pill ${!loanHasCustom?"active":""}" id="loanRateShared" onclick="toggleLoanCustomRate(false)">用旅程匯率</button>
+          <button type="button" class="pill ${loanHasCustom?"active":""}" id="loanRateCustom" onclick="toggleLoanCustomRate(true)">自訂匯率</button>
+        </div>
+        <div id="loanCustomRateInputWrap" style="display:${loanHasCustom?"flex":"none"};align-items:center;gap:8px">
+          <span style="font-size:13px;white-space:nowrap">1 <span id="loanCustomRateCur">${loanCur}</span> =</span>
+          <input type="number" class="input" id="loanCustomRate" style="width:110px" value="${lf.customRate||loanTripRate}" step="0.0001" inputmode="decimal" placeholder="${loanTripRate}">
+          <span style="font-size:13px">TWD</span>
+        </div>
+        <p style="font-size:11px;color:var(--c-sub);margin-top:6px">結算時以這個匯率換算成 TWD</p>
       </div>
       <div><label class="label">日期</label><input type="date" class="input" id="loanDate" value="${lf.date||today()}"></div>
       <div><label class="label">說明（選填）</label><input class="input" id="loanDesc" placeholder="例：飯店訂金" value="${lf.description||""}"></div>
@@ -905,7 +921,7 @@ window.doAddLoan=function(){
   const members=STATE.tripData.members;
   if(members.length<2){alert("請先新增至少 2 位旅伴");setState({tab:"members"});return}
   STATE.editExpense=null;
-  STATE.loanForm={lender:STATE.myMemberId||members[0].id,borrower:members.find(m=>m.id!==STATE.myMemberId)?.id||members[1]?.id||"",amount:"",currency:"TWD",date:today(),note:""};
+  STATE.loanForm={lender:STATE.myMemberId||members[0].id,borrower:members.find(m=>m.id!==STATE.myMemberId)?.id||members[1]?.id||"",amount:"",currency:"TWD",date:today(),note:"",customRate:null,useCustomRate:false};
   openModal("loan");
 };
 
@@ -916,7 +932,7 @@ window.doEditExpense=function(id){
   if(exp.category==="loan"){
     STATE.editExpense=exp;
     const payments=getPayments(exp);
-    STATE.loanForm={lender:payments[0]?.memberId,borrower:exp.splits[0]?.memberId,amount:exp.amount,currency:exp.currency,date:exp.date,note:exp.note||"",description:exp.description||""};
+    STATE.loanForm={lender:payments[0]?.memberId,borrower:exp.splits[0]?.memberId,amount:exp.amount,currency:exp.currency,date:exp.date,note:exp.note||"",description:exp.description||"",customRate:exp.customRate||null,useCustomRate:!!exp.customRate};
     openModal("loan");
     return;
   }
@@ -1080,6 +1096,23 @@ document.addEventListener("click",function(e){
   }
 });
 
+window.toggleLoanCustomRate=function(useCustom){
+  STATE.loanForm.useCustomRate=useCustom;
+  document.getElementById("loanRateShared")?.classList.toggle("active",!useCustom);
+  document.getElementById("loanRateCustom")?.classList.toggle("active",useCustom);
+  const wrap=document.getElementById("loanCustomRateInputWrap");
+  if(wrap)wrap.style.display=useCustom?"flex":"none";
+};
+
+window.onLoanCurrencyChange=function(code){
+  const row=document.getElementById("loanCustomRateRow");
+  if(row)row.style.display=code==="TWD"?"none":"block";
+  const cur=document.getElementById("loanCustomRateCur");
+  if(cur)cur.textContent=code;
+  const input=document.getElementById("loanCustomRate");
+  if(input){const r=STATE.tripData.rates[code]||1;input.placeholder=r;if(!STATE.loanForm.useCustomRate)input.value=r;}
+};
+
 window.doSaveLoan=async function(){
   const lf=STATE.loanForm||{};
   const amount=parseFloat(document.getElementById("loanAmount")?.value);
@@ -1090,11 +1123,12 @@ window.doSaveLoan=async function(){
   if(!lf.lender||!lf.borrower){alert("請選擇出借人和借款人");return}
   if(lf.lender===lf.borrower){alert("出借人和借款人不能是同一人");return}
   if(!amount||amount<=0){alert("請填寫金額");return}
+  const customRateVal=lf.useCustomRate&&currency!=="TWD"?parseFloat(document.getElementById("loanCustomRate")?.value)||null:null;
   const exp={
     description:desc,amount,currency,category:"loan",
     paidBy:lf.lender,payments:[{memberId:lf.lender,amount}],
     splits:[{memberId:lf.borrower,ratio:1}],
-    date,note,customRate:null,
+    date,note,customRate:customRateVal,
   };
   if(STATE.editExpense){
     await saveTripData(td=>({...td,expenses:td.expenses.map(e=>e.id===STATE.editExpense.id?{...exp,id:e.id}:e)}));
