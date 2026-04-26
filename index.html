@@ -224,6 +224,14 @@ function setPayAccount(tripCode,memberId,expenseId,data){
   else localStorage.setItem(payAccountKey(tripCode,memberId,expenseId),JSON.stringify(data));
 }
 
+// --- Allowed currencies for this trip (default: all) ---
+function getAllowedCurrencies(td){
+  const list=td?.allowedCurrencies;
+  if(!Array.isArray(list)||!list.length)return CURRENCIES.map(c=>c.code);
+  // Always include TWD
+  return list.includes("TWD")?list:["TWD",...list];
+}
+
 // --- Settlement ---
 function expRate(exp,rates){return exp.customRate||rates[exp.currency]||1}
 
@@ -489,6 +497,7 @@ function renderModal(){
   if(modal==="rates"){
     title="幣別與匯率設定";
     const curBase=localStorage.getItem(`displayCurrency-${STATE.tripCode}`)||"TWD";
+    const allowed=getAllowedCurrencies(td);
     body=`<div style="margin-bottom:16px">
       <label class="label">我要看哪個幣別？</label>
       <p style="font-size:12px;color:var(--c-sub);margin-bottom:8px">這是個人設定，每位旅伴可以選自己想看的幣別，互不影響</p>
@@ -498,6 +507,17 @@ function renderModal(){
     });
     body+=`</select>
     </div>
+    <div style="border-top:1px solid var(--c-light);padding-top:16px;margin-bottom:16px">
+      <label class="label">這趟旅程要用哪些幣別？</label>
+      <p style="font-size:12px;color:var(--c-sub);margin-bottom:10px">勾選後，新增消費時的幣別選單只會顯示這些（TWD 一定包含）</p>
+      <div class="flex flex-wrap gap-6">`;
+    CURRENCIES.forEach(c=>{
+      const on=allowed.includes(c.code);
+      const isTWD=c.code==="TWD";
+      body+=`<button type="button" class="pill ${on?"active":""}" ${isTWD?"disabled style='opacity:0.6;cursor:not-allowed'":""} onclick="${isTWD?"":`doToggleAllowedCurrency('${c.code}')`}">${c.symbol} ${c.code}</button>`;
+    });
+    body+=`</div>
+    </div>
     <div style="border-top:1px solid var(--c-light);padding-top:16px">
     <div class="flex gap-8 mb-12" style="align-items:center;justify-content:space-between;flex-wrap:wrap">
       <div><label class="label" style="margin-bottom:2px">匯率設定（共用）</label>
@@ -505,7 +525,7 @@ function renderModal(){
       <button class="btn-secondary" id="fetchRatesBtn" onclick="doFetchRates()" style="font-size:13px;padding:8px 14px;white-space:nowrap">🔄 同步最新匯率</button>
     </div>
     <div id="ratesFetchStatus" style="font-size:12px;margin-bottom:10px;color:var(--c-sub)">${td?.ratesUpdatedAt?`上次同步：${new Date(td.ratesUpdatedAt).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}`:""}</div>`;
-    CURRENCIES.filter(c=>c.code!=="TWD").forEach(c=>{
+    CURRENCIES.filter(c=>c.code!=="TWD"&&allowed.includes(c.code)).forEach(c=>{
       body+=`<div class="flex gap-8 mb-12" style="align-items:center">
         <span style="width:80px;font-size:14px;font-weight:600">${c.code}</span>
         <span style="font-size:12px;color:var(--c-sub);width:24px">1 =</span>
@@ -537,7 +557,7 @@ function renderModal(){
       <div class="flex gap-8">
         <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="expAmount" placeholder="0" value="${exp?.amount||""}" inputmode="decimal"></div>
         <div style="width:110px"><label class="label">幣別</label><select class="input" id="expCurrency" style="appearance:auto" onchange="onExpCurrencyChange(this.value)">`;
-    CURRENCIES.forEach(c=>{body+=`<option value="${c.code}" ${c.code===curCurrency?"selected":""}>${c.symbol} ${c.code}</option>`;});
+    {const allowed=getAllowedCurrencies(td);CURRENCIES.filter(c=>allowed.includes(c.code)||c.code===curCurrency).forEach(c=>{body+=`<option value="${c.code}" ${c.code===curCurrency?"selected":""}>${c.symbol} ${c.code}</option>`;});}
     const tripRate=rates[curCurrency]||1;
     const hasCustomRate=!!exp?.customRate;
     body+=`</select></div></div>
@@ -571,7 +591,7 @@ function renderModal(){
         const pay=expPayments.find(p=>p.memberId===m.id);
         const v=pay?pay.amount:0;
         const color=getColor(m.name);
-        body+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${v}" data-payment="${m.id}" inputmode="decimal" placeholder="0" oninput="updatePaidSum()"><span style="font-size:12px;color:var(--c-sub)">${symPay}</span></div>`;
+        body+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${v}" data-payment="${m.id}" inputmode="decimal" placeholder="0" oninput="updatePaidSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symPay}</span></div>`;
       });
       body+=`<div id="paidSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div>`;
     }
@@ -592,7 +612,7 @@ function renderModal(){
       exp.splits.forEach(s=>{
         const m=members.find(x=>x.id===s.memberId);
         const actualAmt=totalRatio>0?Math.round((s.ratio/totalRatio)*exp.amount*100)/100:0;
-        if(m)body+=`<div class="flex gap-8 mb-12" style="align-items:center">${badgeHTML(m)}<input type="number" class="input" style="flex:1;max-width:120px" value="${actualAmt}" data-ratio="${m.id}" inputmode="decimal" placeholder="0"><span style="font-size:12px;color:var(--c-sub)">${(CURRENCIES.find(c=>c.code===exp.currency)||CURRENCIES[0]).symbol}</span></div>`;
+        if(m)body+=`<div class="flex gap-8 mb-12" style="align-items:center">${badgeHTML(m)}<input type="number" class="input" style="flex:1;max-width:120px" value="${actualAmt}" data-ratio="${m.id}" inputmode="decimal" placeholder="0"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${(CURRENCIES.find(c=>c.code===exp.currency)||CURRENCIES[0]).symbol}</span></div>`;
       });
     }
     body+=`<div id="customSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div></div>`;
@@ -632,7 +652,7 @@ function renderModal(){
       <div class="flex gap-8">
         <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="loanAmount" placeholder="0" value="${lf.amount||""}" inputmode="decimal"></div>
         <div style="width:110px"><label class="label">幣別</label><select class="input" id="loanCurrency" style="appearance:auto">`;
-    CURRENCIES.forEach(c=>{body+=`<option value="${c.code}" ${c.code===(lf.currency||"TWD")?"selected":""}>${c.symbol} ${c.code}</option>`;});
+    {const allowed=getAllowedCurrencies(td);const curLoan=lf.currency||"TWD";CURRENCIES.filter(c=>allowed.includes(c.code)||c.code===curLoan).forEach(c=>{body+=`<option value="${c.code}" ${c.code===curLoan?"selected":""}>${c.symbol} ${c.code}</option>`;});}
     body+=`</select></div>
       </div>
       <div><label class="label">日期</label><input type="date" class="input" id="loanDate" value="${lf.date||today()}"></div>
@@ -804,6 +824,21 @@ window.doRemoveMember=async function(id,name){
   }));
 };
 
+window.doToggleAllowedCurrency=async function(code){
+  if(code==="TWD")return;
+  const td=STATE.tripData;
+  const cur=getAllowedCurrencies(td);
+  const has=cur.includes(code);
+  let next=has?cur.filter(c=>c!==code):[...cur,code];
+  // Don't allow removing a currency that's already used in expenses
+  if(has&&td.expenses?.some(e=>e.currency===code)){
+    alert(`已有消費使用 ${code}，無法停用`);
+    return;
+  }
+  await saveTripData(t=>({...t,allowedCurrencies:next}));
+  renderModal();
+};
+
 window.doUpdateRate=async function(code,val){
   const v=parseFloat(val)||0;
   await saveTripData(td=>({...td,rates:{...td.rates,[code]:v}}));
@@ -926,6 +961,9 @@ window.onExpCurrencyChange=function(code){
   if(cur)cur.textContent=code;
   const input=document.getElementById("expCustomRate");
   if(input){const r=STATE.tripData.rates[code]||1;input.placeholder=r;if(!expState.useCustomRate)input.value=r;}
+  // Refresh currency symbols in multi-pay and custom-split sections
+  const symbol=(CURRENCIES.find(c=>c.code===code)||CURRENCIES[0]).symbol;
+  document.querySelectorAll("[data-cur-symbol]").forEach(el=>{el.textContent=symbol});
 };
 
 window.setPayMode=function(mode){
@@ -947,7 +985,7 @@ window.setPayMode=function(mode){
     let h=`<p style="font-size:12px;color:var(--c-sub);margin-bottom:8px">輸入每位旅伴的付款金額（沒付的留 0）</p>`;
     members.forEach(m=>{
       const color=getColor(m.name);
-      h+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${defaults[m.id]}" data-payment="${m.id}" inputmode="decimal" placeholder="0" oninput="updatePaidSum()"><span style="font-size:12px;color:var(--c-sub)">${symbol}</span></div>`;
+      h+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${defaults[m.id]}" data-payment="${m.id}" inputmode="decimal" placeholder="0" oninput="updatePaidSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symbol}</span></div>`;
     });
     h+=`<div id="paidSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div>`;
     multi.innerHTML=h;
@@ -985,7 +1023,7 @@ window.setSplitMode=function(mode){
     let h=`<p style="font-size:12px;color:var(--c-sub);margin-bottom:8px">直接輸入每個人應分擔的金額</p>`;
     members.forEach(m=>{
       const color=getColor(m.name);
-      h+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${evenSplit}" data-ratio="${m.id}" inputmode="decimal" placeholder="0" oninput="updateCustomSum()"><span style="font-size:12px;color:var(--c-sub)">${symbol}</span></div>`;
+      h+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${evenSplit}" data-ratio="${m.id}" inputmode="decimal" placeholder="0" oninput="updateCustomSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symbol}</span></div>`;
     });
     h+=`<div id="customSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div>`;
     cr.innerHTML=h;
