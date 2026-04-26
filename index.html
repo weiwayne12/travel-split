@@ -178,6 +178,13 @@ const CATEGORIES = [
   {id:"food",icon:"🍽️",name:"餐飲"},{id:"transport",icon:"🚗",name:"交通"},
   {id:"hotel",icon:"🏨",name:"住宿"},{id:"ticket",icon:"🎫",name:"門票"},
   {id:"shopping",icon:"🛍️",name:"購物"},{id:"other",icon:"📦",name:"其他"},
+  {id:"loan",icon:"🤝",name:"借款"},
+];
+const PAY_ACCOUNTS = [
+  {id:"cash",icon:"💵",name:"現金"},
+  {id:"credit",icon:"💳",name:"信用卡"},
+  {id:"debit",icon:"🏧",name:"金融卡"},
+  {id:"other",icon:"📒",name:"其他"},
 ];
 const DEFAULT_RATES = {TWD:1,JPY:0.215,USD:32.5,EUR:35.2,KRW:0.024,GBP:41.0,THB:0.92,VND:0.0013,SGD:24.3,HKD:4.15,MYR:7.1,AUD:21.5,CNY:4.48};
 const COLORS = ["#e8735a","#5b9bd5","#6dbf67","#d4a843","#a87ed4","#4ec6c1","#e07db5","#8a9a5b"];
@@ -206,6 +213,16 @@ function displaySymbol(baseCurrency){
 // --- Local storage for "my trips" ---
 function getMyTrips(){try{return JSON.parse(localStorage.getItem("my-trips"))||[]}catch{return[]}}
 function saveMyTrips(t){localStorage.setItem("my-trips",JSON.stringify(t))}
+
+// --- Personal payment account annotation (per device, per user, per expense) ---
+function payAccountKey(tripCode,memberId,expenseId){return `pay-account-${tripCode}-${memberId}-${expenseId}`}
+function getPayAccount(tripCode,memberId,expenseId){
+  try{return JSON.parse(localStorage.getItem(payAccountKey(tripCode,memberId,expenseId)))||null}catch{return null}
+}
+function setPayAccount(tripCode,memberId,expenseId,data){
+  if(!data||(!data.type&&!data.note))localStorage.removeItem(payAccountKey(tripCode,memberId,expenseId));
+  else localStorage.setItem(payAccountKey(tripCode,memberId,expenseId),JSON.stringify(data));
+}
 
 // --- Settlement ---
 function expRate(exp,rates){return exp.customRate||rates[exp.currency]||1}
@@ -323,7 +340,7 @@ function renderTrip(){
   const rates=td.rates||DEFAULT_RATES;
   const memberMap={};members.forEach(m=>{memberMap[m.id]=m});
   const myMember=memberMap[myMemberId]||{name:"?"};
-  const totalTWD=expenses.reduce((s,e)=>s+e.amount*(rates[e.currency]||1),0);
+  const totalTWD=expenses.filter(e=>e.category!=="loan").reduce((s,e)=>s+e.amount*(rates[e.currency]||1),0);
   const pp=perPersonCalc(members,expenses,rates);
   const settlement=calcSettlement(members,expenses,rates);
   // Display currency is per-user (stored locally), each person sees their own preference
@@ -357,7 +374,7 @@ function renderTrip(){
   <div class="content">`;
 
   if(tab==="expenses"){
-    html+=`<div class="flex gap-8 mb-12"><button class="btn-primary" style="flex:1" onclick="doAddExpense()">+ 新增消費</button><button class="paste-btn" onclick="openModal('paste')">📋 批次</button></div>`;
+    html+=`<div class="flex gap-8 mb-12"><button class="btn-primary" style="flex:1" onclick="doAddExpense()">+ 新增消費</button><button class="paste-btn" onclick="doAddLoan()">🤝 借款</button><button class="paste-btn" onclick="openModal('paste')">📋 批次</button></div>`;
     if(!expenses.length){
       html+=`<div class="empty"><div class="empty-icon">📝</div><p>還沒有消費紀錄</p></div>`;
     }
@@ -367,10 +384,31 @@ function renderTrip(){
       const convHTML=exp.currency!=="TWD"?`<div class="convert">≈ ${symbol}${fmtMoney(toDisplay(exp.amount*expRate(exp,rates),baseCurrency,rates))}</div>`:"";
       const rateTag=exp.customRate?`<span style="font-size:10px;color:var(--c-gold);margin-left:4px" title="自訂匯率 1${exp.currency}=${exp.customRate}TWD">📌</span>`:"";
       const payers=getPayments(exp);
-      const payerLabel=payers.length>1?payers.map(p=>(memberMap[p.memberId]||{name:"?"}).name).join("、"):(memberMap[payers[0]?.memberId]||{name:"?"}).name;
+      const isLoan=exp.category==="loan";
+      let mainLine;
+      if(isLoan){
+        const lender=(memberMap[payers[0]?.memberId]||{name:"?"}).name;
+        const borrower=(memberMap[exp.splits[0]?.memberId]||{name:"?"}).name;
+        mainLine=`${lender} → ${borrower} · ${exp.date}`;
+      }else{
+        const payerLabel=payers.length>1?payers.map(p=>(memberMap[p.memberId]||{name:"?"}).name).join("、"):(memberMap[payers[0]?.memberId]||{name:"?"}).name;
+        mainLine=`${payerLabel} 代付 · ${exp.date}`;
+      }
+      // Personal payment account tag (only visible if I'm one of the payers)
+      const iAmPayer=payers.some(p=>p.memberId===myMemberId);
+      let payAcctTag="";
+      if(iAmPayer){
+        const acct=getPayAccount(STATE.tripCode,myMemberId,exp.id);
+        if(acct&&(acct.type||acct.note)){
+          const accDef=PAY_ACCOUNTS.find(a=>a.id===acct.type);
+          const label=accDef?`${accDef.icon} ${acct.name||accDef.name}`:(acct.note?`📒 ${acct.note}`:"");
+          if(label)payAcctTag=`<span style="font-size:11px;color:var(--c-sub);margin-left:6px;background:var(--c-light);padding:2px 6px;border-radius:6px">${label}</span>`;
+        }
+      }
+      const noteHTML=exp.note?`<div style="font-size:11px;color:var(--c-sub);margin-top:3px;font-style:italic">📝 ${exp.note}</div>`:"";
       html+=`<div class="card" onclick="doEditExpense('${exp.id}')">
         <span class="card-icon">${cat.icon}</span>
-        <div class="card-body"><div class="card-title">${exp.description||cat.name}${rateTag}</div><div class="card-sub">${payerLabel} 代付 · ${exp.date}</div></div>
+        <div class="card-body"><div class="card-title">${exp.description||cat.name}${rateTag}${payAcctTag}</div><div class="card-sub">${mainLine}</div>${noteHTML}</div>
         <div class="card-amount"><div class="main">${cur.symbol}${exp.amount.toLocaleString()}</div>${convHTML}</div>
       </div>`;
     });
@@ -516,6 +554,7 @@ function renderModal(){
         </div>
       </div>
       <div><label class="label">日期</label><input type="date" class="input" id="expDate" value="${exp?.date||today()}"></div>
+      <div><label class="label">備註（選填）</label><textarea class="input" id="expNote" placeholder="額外要記錄的事項..." style="resize:vertical;min-height:54px;font-size:14px;line-height:1.5">${exp?.note||""}</textarea></div>
       <div><label class="label">誰付的？</label>
         <div class="flex gap-8 mb-8">
           <button type="button" class="pill ${!isMultiPay?"active":""}" id="paySingle" onclick="setPayMode('single')">一人付</button>
@@ -556,10 +595,51 @@ function renderModal(){
         if(m)body+=`<div class="flex gap-8 mb-12" style="align-items:center">${badgeHTML(m)}<input type="number" class="input" style="flex:1;max-width:120px" value="${actualAmt}" data-ratio="${m.id}" inputmode="decimal" placeholder="0"><span style="font-size:12px;color:var(--c-sub)">${(CURRENCIES.find(c=>c.code===exp.currency)||CURRENCIES[0]).symbol}</span></div>`;
       });
     }
-    body+=`<div id="customSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div></div>
+    body+=`<div id="customSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div></div>`;
+
+    // Personal pay account section — only show if current user is (or will be) a payer
+    const myAcct=exp?getPayAccount(tripCode,STATE.myMemberId,exp.id):null;
+    body+=`<div style="border-top:1px dashed var(--c-border);padding-top:14px;margin-top:4px">
+      <label class="label">💳 我的付款帳戶（只有自己看得到）</label>
+      <p style="font-size:11px;color:var(--c-sub);margin-bottom:8px">記錄這筆是用哪個帳戶/卡片付的，旅伴看不到</p>
+      <div class="flex flex-wrap gap-6 mb-8" id="payAcctArea">`;
+    body+=`<button type="button" class="pill ${!myAcct?.type?"active":""}" data-acct="" onclick="setPayAcctType('')">無</button>`;
+    PAY_ACCOUNTS.forEach(a=>{
+      body+=`<button type="button" class="pill ${myAcct?.type===a.id?"active":""}" data-acct="${a.id}" onclick="setPayAcctType('${a.id}')">${a.icon} ${a.name}</button>`;
+    });
+    body+=`</div>
+      <input class="input" id="payAcctName" placeholder="自訂帳戶名稱（如：玉山卡、悠遊卡）" value="${myAcct?.name||""}" style="font-size:13px;margin-bottom:6px">
+      <input class="input" id="payAcctNote" placeholder="備註（選填，例如：分期 6 期）" value="${myAcct?.note||""}" style="font-size:13px">
+    </div>
       <button class="btn-primary" onclick="doSaveExpense()">
         ${exp?"儲存修改":"新增"}</button>`;
     if(exp)body+=`<button class="btn-danger" onclick="doDeleteExpense()">刪除這筆消費</button>`;
+    body+=`</div>`;
+  }
+
+  if(modal==="loan"){
+    const lf=STATE.loanForm||{};
+    const exp=STATE.editExpense;
+    title=exp?"編輯借款":"新增借款";
+    body=`<div style="display:flex;flex-direction:column;gap:14px">
+      <p style="font-size:13px;color:var(--c-sub);background:var(--c-light);padding:10px 12px;border-radius:10px;line-height:1.6">🤝 借款會列入結算（借款人之後要還給出借人），但不計入旅程總花費的「分攤」。</p>
+      <div><label class="label">出借人（誰把錢借出去）</label><div class="flex flex-wrap gap-6" id="loanLenderArea">`;
+    members.forEach(m=>{body+=badgeHTML(m,{selected:m.id===lf.lender,clickId:`loanLender-${m.id}`});});
+    body+=`</div></div>
+      <div><label class="label">借款人（誰收到錢/欠錢的人）</label><div class="flex flex-wrap gap-6" id="loanBorrowerArea">`;
+    members.forEach(m=>{body+=badgeHTML(m,{selected:m.id===lf.borrower,clickId:`loanBorrower-${m.id}`});});
+    body+=`</div></div>
+      <div class="flex gap-8">
+        <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="loanAmount" placeholder="0" value="${lf.amount||""}" inputmode="decimal"></div>
+        <div style="width:110px"><label class="label">幣別</label><select class="input" id="loanCurrency" style="appearance:auto">`;
+    CURRENCIES.forEach(c=>{body+=`<option value="${c.code}" ${c.code===(lf.currency||"TWD")?"selected":""}>${c.symbol} ${c.code}</option>`;});
+    body+=`</select></div>
+      </div>
+      <div><label class="label">日期</label><input type="date" class="input" id="loanDate" value="${lf.date||today()}"></div>
+      <div><label class="label">說明（選填）</label><input class="input" id="loanDesc" placeholder="例：飯店訂金" value="${lf.description||""}"></div>
+      <div><label class="label">備註（選填）</label><textarea class="input" id="loanNote" placeholder="額外要記錄的事項..." style="resize:vertical;min-height:54px;font-size:14px;line-height:1.5">${lf.note||""}</textarea></div>
+      <button class="btn-primary" onclick="doSaveLoan()">${exp?"儲存修改":"新增借款"}</button>`;
+    if(exp)body+=`<button class="btn-danger" onclick="doDeleteExpense()">刪除這筆借款</button>`;
     body+=`</div>`;
   }
 
@@ -769,19 +849,42 @@ window.doSetBaseCurrency=function(code){
 };
 
 // --- Expense modal state ---
-let expState={category:"food",paidBy:"",splitMembers:{},splitMode:"equal",customRatios:{},useCustomRate:false,payMode:"single",payments:{}};
+let expState={category:"food",paidBy:"",splitMembers:{},splitMode:"equal",customRatios:{},useCustomRate:false,payMode:"single",payments:{},payAcctType:""};
+
+window.setPayAcctType=function(type){
+  expState.payAcctType=type;
+  document.querySelectorAll("#payAcctArea .pill").forEach(el=>{
+    el.classList.toggle("active",(el.dataset.acct||"")===type);
+  });
+};
 
 window.doAddExpense=function(){
   const members=STATE.tripData.members;
   if(members.length<2){alert("請先新增至少 2 位旅伴");setState({tab:"members"});return}
   STATE.editExpense=null;
-  expState={category:"food",paidBy:members[0]?.id||"",splitMembers:Object.fromEntries(members.map(m=>[m.id,true])),splitMode:"equal",customRatios:{},useCustomRate:false,payMode:"single",payments:{}};
+  expState={category:"food",paidBy:members[0]?.id||"",splitMembers:Object.fromEntries(members.map(m=>[m.id,true])),splitMode:"equal",customRatios:{},useCustomRate:false,payMode:"single",payments:{},payAcctType:""};
   openModal("expense");
+};
+
+window.doAddLoan=function(){
+  const members=STATE.tripData.members;
+  if(members.length<2){alert("請先新增至少 2 位旅伴");setState({tab:"members"});return}
+  STATE.editExpense=null;
+  STATE.loanForm={lender:STATE.myMemberId||members[0].id,borrower:members.find(m=>m.id!==STATE.myMemberId)?.id||members[1]?.id||"",amount:"",currency:"TWD",date:today(),note:""};
+  openModal("loan");
 };
 
 window.doEditExpense=function(id){
   const exp=STATE.tripData.expenses.find(e=>e.id===id);
   if(!exp)return;
+  // Loan expenses get the loan editor
+  if(exp.category==="loan"){
+    STATE.editExpense=exp;
+    const payments=getPayments(exp);
+    STATE.loanForm={lender:payments[0]?.memberId,borrower:exp.splits[0]?.memberId,amount:exp.amount,currency:exp.currency,date:exp.date,note:exp.note||"",description:exp.description||""};
+    openModal("loan");
+    return;
+  }
   STATE.editExpense=exp;
   const allEqual=exp.splits.every(s=>s.ratio===exp.splits[0]?.ratio);
   const payments=getPayments(exp);
@@ -794,6 +897,7 @@ window.doEditExpense=function(id){
     useCustomRate:!!exp.customRate,
     payMode:multi?"multi":"single",
     payments:Object.fromEntries(payments.map(p=>[p.memberId,p.amount])),
+    payAcctType:(getPayAccount(STATE.tripCode,STATE.myMemberId,exp.id)?.type)||"",
   };
   openModal("expense");
 };
@@ -928,7 +1032,39 @@ document.addEventListener("click",function(e){
     expState.splitMembers[mid]=!expState.splitMembers[mid];
     el.classList.toggle("selected",expState.splitMembers[mid]);
   }
+  if(click.startsWith("loanLender-")){
+    STATE.loanForm.lender=click.slice(11);
+    document.querySelectorAll("#loanLenderArea [data-click]").forEach(b=>{b.classList.toggle("selected",b===el)});
+  }
+  if(click.startsWith("loanBorrower-")){
+    STATE.loanForm.borrower=click.slice(13);
+    document.querySelectorAll("#loanBorrowerArea [data-click]").forEach(b=>{b.classList.toggle("selected",b===el)});
+  }
 });
+
+window.doSaveLoan=async function(){
+  const lf=STATE.loanForm||{};
+  const amount=parseFloat(document.getElementById("loanAmount")?.value);
+  const currency=document.getElementById("loanCurrency")?.value||"TWD";
+  const date=document.getElementById("loanDate")?.value||today();
+  const desc=document.getElementById("loanDesc")?.value?.trim()||"借款";
+  const note=document.getElementById("loanNote")?.value?.trim()||"";
+  if(!lf.lender||!lf.borrower){alert("請選擇出借人和借款人");return}
+  if(lf.lender===lf.borrower){alert("出借人和借款人不能是同一人");return}
+  if(!amount||amount<=0){alert("請填寫金額");return}
+  const exp={
+    description:desc,amount,currency,category:"loan",
+    paidBy:lf.lender,payments:[{memberId:lf.lender,amount}],
+    splits:[{memberId:lf.borrower,ratio:1}],
+    date,note,customRate:null,
+  };
+  if(STATE.editExpense){
+    await saveTripData(td=>({...td,expenses:td.expenses.map(e=>e.id===STATE.editExpense.id?{...exp,id:e.id}:e)}));
+  }else{
+    await saveTripData(td=>({...td,expenses:[...td.expenses,{...exp,id:genId()}]}));
+  }
+  closeModal();
+};
 
 window.doSaveExpense=async function(){
   const desc=$("expDesc")?.value||"";
@@ -970,19 +1106,39 @@ window.doSaveExpense=async function(){
   }));
 
   const customRateVal=expState.useCustomRate&&currency!=="TWD"?parseFloat($("expCustomRate")?.value)||null:null;
-  const exp={description:desc,amount,currency,category:expState.category,paidBy:payments[0].memberId,payments,splits,date,...(customRateVal?{customRate:customRateVal}:{customRate:null})};
+  const note=$("expNote")?.value?.trim()||"";
+  const exp={description:desc,amount,currency,category:expState.category,paidBy:payments[0].memberId,payments,splits,date,note,...(customRateVal?{customRate:customRateVal}:{customRate:null})};
 
+  let savedId;
   if(STATE.editExpense){
-    await saveTripData(td=>({...td,expenses:td.expenses.map(e=>e.id===STATE.editExpense.id?{...exp,id:e.id}:e)}));
+    savedId=STATE.editExpense.id;
+    await saveTripData(td=>({...td,expenses:td.expenses.map(e=>e.id===savedId?{...exp,id:e.id}:e)}));
   }else{
-    await saveTripData(td=>({...td,expenses:[...td.expenses,{...exp,id:genId()}]}));
+    savedId=genId();
+    await saveTripData(td=>({...td,expenses:[...td.expenses,{...exp,id:savedId}]}));
+  }
+
+  // Save personal pay account annotation (only if I'm a payer)
+  const iAmPayer=payments.some(p=>p.memberId===STATE.myMemberId);
+  if(iAmPayer){
+    const acctType=expState.payAcctType||"";
+    const acctName=document.getElementById("payAcctName")?.value?.trim()||"";
+    const acctNote=document.getElementById("payAcctNote")?.value?.trim()||"";
+    if(acctType||acctName||acctNote){
+      setPayAccount(STATE.tripCode,STATE.myMemberId,savedId,{type:acctType,name:acctName,note:acctNote});
+    }else{
+      setPayAccount(STATE.tripCode,STATE.myMemberId,savedId,null);
+    }
   }
   closeModal();
 };
 
 window.doDeleteExpense=async function(){
-  if(!confirm("確定刪除這筆消費？"))return;
-  await saveTripData(td=>({...td,expenses:td.expenses.filter(e=>e.id!==STATE.editExpense.id)}));
+  if(!confirm("確定刪除這筆？"))return;
+  const id=STATE.editExpense.id;
+  // Clean up any local pay-account annotations for this expense (only mine; others' will be orphaned but harmless)
+  setPayAccount(STATE.tripCode,STATE.myMemberId,id,null);
+  await saveTripData(td=>({...td,expenses:td.expenses.filter(e=>e.id!==id)}));
   closeModal();
 };
 
