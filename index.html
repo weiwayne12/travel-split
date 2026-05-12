@@ -501,9 +501,9 @@ function renderTrip(){
           const pct=Math.round(Math.abs(v)/totalAbs*100);
           const isNeg=v<0;
           const barColor=isNeg?"var(--c-green)":"var(--c-primary)";
-          html+=`<div style="padding:8px 0;border-bottom:1px solid var(--c-light)">
+          html+=`<div style="padding:8px 0;border-bottom:1px solid var(--c-light);cursor:pointer" onclick="doShowCatDetail('${cid}',null)">
             <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:4px">
-              <span style="font-size:14px">${c.icon} ${c.name}</span>
+              <span style="font-size:14px">${c.icon} ${c.name} <span style="font-size:11px;color:var(--c-sub)">›</span></span>
               <span style="font-weight:700;color:${barColor};font-size:14px">${isNeg?"+":""}${symbol}${fmtMoney(toDisplay(Math.abs(v),baseCurrency,rates))}</span>
             </div>
             <div style="height:6px;background:var(--c-light);border-radius:3px;overflow:hidden">
@@ -527,15 +527,9 @@ function renderTrip(){
             <span class="badge-avatar" style="background:${color};width:22px;height:22px;font-size:11px">${m.name[0]}</span>
             ${m.name}${meTag}
           </h4>
-          <div class="flex" style="gap:8px;margin-bottom:10px">
-            <div style="flex:1;background:var(--c-light);border-radius:10px;padding:8px 10px">
-              <div style="font-size:11px;color:var(--c-sub)">代付</div>
-              <div style="font-weight:700;color:var(--c-primary);font-size:15px">${symbol}${fmtMoney(toDisplay(mp.paid,baseCurrency,rates))}</div>
-            </div>
-            <div style="flex:1;background:var(--c-light);border-radius:10px;padding:8px 10px">
-              <div style="font-size:11px;color:var(--c-sub)">自己消費</div>
-              <div style="font-weight:700;font-size:15px">${symbol}${fmtMoney(toDisplay(mp.owe,baseCurrency,rates))}</div>
-            </div>
+          <div style="background:var(--c-light);border-radius:10px;padding:10px 14px;margin-bottom:10px">
+            <div style="font-size:11px;color:var(--c-sub)">應負擔金額</div>
+            <div style="font-weight:700;color:var(--c-primary);font-size:18px">${symbol}${fmtMoney(toDisplay(mp.owe,baseCurrency,rates))}</div>
           </div>`;
         if(!mCats.length){
           html+=`<p style="font-size:12px;color:#bbb;text-align:center;padding:8px">無分攤紀錄</p>`;
@@ -546,9 +540,9 @@ function renderTrip(){
             const pct=Math.round(Math.abs(v)/mTotal*100);
             const isNeg=v<0;
             const barColor=isNeg?"var(--c-green)":color;
-            html+=`<div style="padding:5px 0">
+            html+=`<div style="padding:5px 0;cursor:pointer" onclick="doShowCatDetail('${cid}','${m.id}')">
               <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:3px;font-size:13px">
-                <span>${c.icon} ${c.name}</span>
+                <span>${c.icon} ${c.name} <span style="font-size:10px;color:var(--c-sub)">›</span></span>
                 <span style="font-weight:600;color:${barColor}">${isNeg?"+":""}${symbol}${fmtMoney(toDisplay(Math.abs(v),baseCurrency,rates))}</span>
               </div>
               <div style="height:4px;background:var(--c-light);border-radius:2px;overflow:hidden">
@@ -827,6 +821,67 @@ function renderModal(){
     body+=`</div>`;
   }
 
+  if(modal==="catDetail"){
+    const cd=STATE.catDetail||{};
+    const c=CATEGORIES.find(x=>x.id===cd.category)||{icon:"📦",name:cd.category};
+    const memberMap={};(td?.members||[]).forEach(m=>{memberMap[m.id]=m});
+    const focusMember=cd.memberId?memberMap[cd.memberId]:null;
+    title=`${c.icon} ${c.name}${focusMember?` · ${focusMember.name}`:""}`;
+    const baseCur=localStorage.getItem(`displayCurrency-${tripCode}`)||"TWD";
+    const sym=displaySymbol(baseCur);
+    // Filter expenses in this category; if memberId given, only those the member is part of the split
+    const items=(td?.expenses||[]).filter(e=>e.category===cd.category&&(!cd.memberId||e.splits.some(s=>s.memberId===cd.memberId)));
+    let total=0,myShareTotal=0;
+    body=`<div style="display:flex;flex-direction:column;gap:8px">`;
+    if(!items.length){
+      body+=`<p style="color:#bbb;text-align:center;padding:20px">沒有資料</p>`;
+    }else{
+      [...items].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).forEach(exp=>{
+        const sign=expSign(exp);
+        const rate=expRate(exp,rates);
+        const fullAmt=exp.amount*rate*sign;
+        total+=fullAmt;
+        const cur=CURRENCIES.find(x=>x.code===exp.currency)||CURRENCIES[0];
+        const payers=getPayments(exp);
+        const payerNames=payers.map(p=>(memberMap[p.memberId]||{name:"?"}).name).join("、");
+        let myShareLine="";
+        if(focusMember){
+          const sp=exp.splits;
+          const tot=sp.reduce((s,x)=>s+x.ratio,0);
+          const myS=sp.find(s=>s.memberId===cd.memberId);
+          if(myS){
+            const myAmt=fullAmt*(myS.ratio/tot);
+            myShareTotal+=myAmt;
+            myShareLine=`<div style="font-size:11px;color:var(--c-primary);margin-top:2px">分擔 ${sym}${fmtMoney(toDisplay(Math.abs(myAmt),baseCur,rates))}</div>`;
+          }
+        }
+        const isNeg=sign<0;
+        const pref=isNeg?"+":"";
+        const col=isNeg?"var(--c-green)":"var(--c-primary)";
+        const noteH=exp.note?`<div style="font-size:11px;color:var(--c-sub);font-style:italic;margin-top:2px">📝 ${exp.note}</div>`:"";
+        body+=`<div style="padding:10px 12px;background:var(--c-bg);border-radius:10px;cursor:pointer" onclick="doFromCatDetailEdit('${exp.id}')">
+          <div class="flex" style="justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:14px">${exp.description||c.name}</div>
+              <div style="font-size:11px;color:var(--c-sub);margin-top:2px">${payerNames} 代付 · ${exp.date}</div>
+              ${myShareLine}
+              ${noteH}
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-weight:700;font-size:15px;color:${col}">${pref}${cur.symbol}${exp.amount.toLocaleString()}</div>
+              ${exp.currency!=="TWD"?`<div style="font-size:11px;color:#bbb">≈ ${pref}${sym}${fmtMoney(toDisplay(Math.abs(fullAmt),baseCur,rates))}</div>`:""}
+            </div>
+          </div>
+        </div>`;
+      });
+      body+=`<div style="border-top:1px solid var(--c-light);margin-top:8px;padding-top:12px;display:flex;justify-content:space-between;font-weight:700">
+        <span>${focusMember?`${focusMember.name} 應分擔`:"類別總計"}</span>
+        <span style="color:var(--c-primary)">${total<0?"+":""}${sym}${fmtMoney(toDisplay(Math.abs(focusMember?myShareTotal:total),baseCur,rates))}</span>
+      </div>`;
+    }
+    body+=`<button class="btn-primary mt-12" onclick="closeModal()">關閉</button></div>`;
+  }
+
   if(modal==="paste"){
     title="📋 批次新增消費";
     const memberList=members.map(m=>m.name).join("、");
@@ -976,6 +1031,19 @@ window.closeModal=function(){
   }
   // Re-render trip view immediately so optimistic updates show without waiting for Firestore round-trip
   render();
+};
+
+window.doShowCatDetail=function(category,memberId){
+  STATE.catDetail={category,memberId:memberId==="null"?null:memberId};
+  openModal("catDetail");
+};
+
+window.doFromCatDetailEdit=function(id){
+  // Close detail modal then open expense editor for this entry
+  STATE.modal=null;STATE.catDetail=null;
+  const overlay=document.querySelector(".modal-overlay");
+  if(overlay)overlay.innerHTML="";
+  window.doEditExpense(id);
 };
 
 window.doMarkSettled=async function(from,to,amount){
