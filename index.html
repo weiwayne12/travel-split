@@ -32,7 +32,7 @@ input,select,button{font-family:var(--font);outline:none}
 
 /* Tabs */
 .tabs{display:flex;margin:14px 16px 0;background:var(--c-card);border-radius:14px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05)}
-.tab-btn{flex:1;padding:10px 0;border:none;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;background:transparent;color:var(--c-sub);transition:all 0.2s}
+.tab-btn{flex:1;padding:10px 2px;border:none;border-radius:11px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--c-sub);transition:all 0.2s;white-space:nowrap}
 .tab-btn.active{background:var(--c-primary);color:#fff}
 
 /* Content */
@@ -190,8 +190,11 @@ const CATEGORIES = [
   {id:"food",icon:"🍽️",name:"餐飲"},{id:"transport",icon:"🚗",name:"交通"},
   {id:"hotel",icon:"🏨",name:"住宿"},{id:"ticket",icon:"🎫",name:"門票"},
   {id:"shopping",icon:"🛍️",name:"購物"},{id:"other",icon:"📦",name:"其他"},
+  {id:"refund",icon:"💸",name:"退稅/收入"},
   {id:"loan",icon:"🤝",name:"借款"},
 ];
+// Refund/income reverses the cash flow: "payer" received money, "splits" share the benefit.
+function expSign(exp){return exp.category==="refund"?-1:1}
 const PAY_ACCOUNTS = [
   {id:"cash",icon:"💵",name:"現金"},
   {id:"credit",icon:"💳",name:"信用卡"},
@@ -253,16 +256,22 @@ function getPayments(exp){
   return [{memberId:exp.paidBy,amount:exp.amount}];
 }
 
-function calcSettlement(members,expenses,rates){
+function calcSettlement(members,expenses,rates,settlements){
   const bal={};members.forEach(m=>{bal[m.id]=0});
   expenses.forEach(exp=>{
     const rate=expRate(exp,rates);
-    const amt=exp.amount*rate;
+    const sign=expSign(exp);
+    const amt=exp.amount*rate*sign;
     const sp=exp.splits.filter(s=>members.some(m=>m.id===s.memberId));
     if(!sp.length)return;
-    getPayments(exp).forEach(p=>{if(bal[p.memberId]!==undefined)bal[p.memberId]+=p.amount*rate;});
+    getPayments(exp).forEach(p=>{if(bal[p.memberId]!==undefined)bal[p.memberId]+=p.amount*rate*sign;});
     const tot=sp.reduce((s,x)=>s+x.ratio,0);
     sp.forEach(s=>{bal[s.memberId]=(bal[s.memberId]||0)-amt*(s.ratio/tot)});
+  });
+  // Apply already-marked settlements (from pays to → from's debt decreases, to's credit decreases)
+  (settlements||[]).forEach(s=>{
+    if(bal[s.from]!==undefined)bal[s.from]+=s.amount;
+    if(bal[s.to]!==undefined)bal[s.to]-=s.amount;
   });
   const debtors=[],creditors=[];
   Object.entries(bal).forEach(([id,v])=>{if(v<-0.01)debtors.push({id,amount:-v});else if(v>0.01)creditors.push({id,amount:v})});
@@ -281,13 +290,33 @@ function perPersonCalc(members,expenses,rates){
   const pp={};members.forEach(m=>{pp[m.id]={paid:0,owe:0}});
   expenses.forEach(exp=>{
     const rate=expRate(exp,rates);
-    const amt=exp.amount*rate;
-    getPayments(exp).forEach(p=>{if(pp[p.memberId])pp[p.memberId].paid+=p.amount*rate;});
+    const sign=expSign(exp);
+    const amt=exp.amount*rate*sign;
+    getPayments(exp).forEach(p=>{if(pp[p.memberId])pp[p.memberId].paid+=p.amount*rate*sign;});
     const sp=exp.splits.filter(s=>pp[s.memberId]);
     const tot=sp.reduce((s,x)=>s+x.ratio,0);
     sp.forEach(s=>{pp[s.memberId].owe+=amt*(s.ratio/tot)});
   });
   return pp;
+}
+
+// Category breakdown per member (own share = what they personally owe per category)
+function categoryBreakdown(members,expenses,rates){
+  const byCat={};
+  const byMember={};members.forEach(m=>{byMember[m.id]={}});
+  expenses.forEach(exp=>{
+    if(exp.category==="loan")return;
+    const rate=expRate(exp,rates);
+    const sign=expSign(exp);
+    const amt=exp.amount*rate*sign;
+    byCat[exp.category]=(byCat[exp.category]||0)+amt;
+    const sp=exp.splits.filter(s=>byMember[s.memberId]);
+    const tot=sp.reduce((s,x)=>s+x.ratio,0);
+    sp.forEach(s=>{
+      byMember[s.memberId][exp.category]=(byMember[s.memberId][exp.category]||0)+amt*(s.ratio/tot);
+    });
+  });
+  return {byCat,byMember};
 }
 
 // ===================== RENDERER =====================
@@ -360,9 +389,10 @@ function renderTrip(){
   const rates=td.rates||DEFAULT_RATES;
   const memberMap={};members.forEach(m=>{memberMap[m.id]=m});
   const myMember=memberMap[myMemberId]||{name:"?"};
-  const totalTWD=expenses.filter(e=>e.category!=="loan").reduce((s,e)=>s+e.amount*(rates[e.currency]||1),0);
+  const totalTWD=expenses.filter(e=>e.category!=="loan").reduce((s,e)=>s+e.amount*(rates[e.currency]||1)*expSign(e),0);
   const pp=perPersonCalc(members,expenses,rates);
-  const settlement=calcSettlement(members,expenses,rates);
+  const settledList=td.settlements||[];
+  const settlement=calcSettlement(members,expenses,rates,settledList);
   // Display currency is per-user (stored locally), each person sees their own preference
   const baseCurrency=localStorage.getItem(`displayCurrency-${STATE.tripCode}`)||"TWD";
   const symbol=displaySymbol(baseCurrency);
@@ -389,6 +419,7 @@ function renderTrip(){
   <div class="tabs">
     <button class="tab-btn ${tab==="expenses"?"active":""}" onclick="setTab('expenses')">💰 消費</button>
     <button class="tab-btn ${tab==="members"?"active":""}" onclick="setTab('members')">👥 旅伴</button>
+    <button class="tab-btn ${tab==="stats"?"active":""}" onclick="setTab('stats')">📊 統計</button>
     <button class="tab-btn ${tab==="settle"?"active":""}" onclick="setTab('settle')">🤝 結算</button>
   </div>
 
@@ -402,7 +433,10 @@ function renderTrip(){
     [...expenses].reverse().forEach(exp=>{
       const cat=CATEGORIES.find(c=>c.id===exp.category)||CATEGORIES[5];
       const cur=CURRENCIES.find(c=>c.code===exp.currency)||CURRENCIES[0];
-      const convHTML=exp.currency!=="TWD"?`<div class="convert">≈ ${symbol}${fmtMoney(toDisplay(exp.amount*expRate(exp,rates),baseCurrency,rates))}</div>`:"";
+      const isRefund=exp.category==="refund";
+      const amtPrefix=isRefund?"+":"";
+      const amtColor=isRefund?"color:var(--c-green)":"";
+      const convHTML=exp.currency!=="TWD"?`<div class="convert">≈ ${amtPrefix}${symbol}${fmtMoney(toDisplay(exp.amount*expRate(exp,rates),baseCurrency,rates))}</div>`:"";
       const rateTag=exp.customRate?`<span style="font-size:10px;color:var(--c-gold);margin-left:4px" title="自訂匯率 1${exp.currency}=${exp.customRate}TWD">📌</span>`:"";
       const payers=getPayments(exp);
       const isLoan=exp.category==="loan";
@@ -430,7 +464,7 @@ function renderTrip(){
       html+=`<div class="card" onclick="doEditExpense('${exp.id}')">
         <span class="card-icon">${cat.icon}</span>
         <div class="card-body"><div class="card-title">${exp.description||cat.name}${rateTag}${payAcctTag}</div><div class="card-sub">${mainLine}</div>${noteHTML}</div>
-        <div class="card-amount"><div class="main">${cur.symbol}${exp.amount.toLocaleString()}</div>${convHTML}</div>
+        <div class="card-amount"><div class="main" style="${amtColor}">${amtPrefix}${cur.symbol}${exp.amount.toLocaleString()}</div>${convHTML}</div>
       </div>`;
     });
   }
@@ -450,6 +484,84 @@ function renderTrip(){
     });
   }
 
+  if(tab==="stats"){
+    if(!expenses.length){
+      html+=`<div class="empty"><div class="empty-icon">📊</div><p>還沒有消費紀錄</p></div>`;
+    }else{
+      const {byCat,byMember}=categoryBreakdown(members,expenses,rates);
+      const catEntries=Object.entries(byCat).filter(([,v])=>Math.abs(v)>0.01).sort((a,b)=>b[1]-a[1]);
+      const totalAbs=catEntries.reduce((s,[,v])=>s+Math.abs(v),0)||1;
+      // Overall category breakdown
+      html+=`<div class="settle-card"><h4 class="settle-title">🏷️ 團體類別總覽</h4>`;
+      if(!catEntries.length){
+        html+=`<p style="color:#bbb;text-align:center;padding:12px">尚無資料</p>`;
+      }else{
+        catEntries.forEach(([cid,v])=>{
+          const c=CATEGORIES.find(x=>x.id===cid)||{icon:"📦",name:cid};
+          const pct=Math.round(Math.abs(v)/totalAbs*100);
+          const isNeg=v<0;
+          const barColor=isNeg?"var(--c-green)":"var(--c-primary)";
+          html+=`<div style="padding:8px 0;border-bottom:1px solid var(--c-light)">
+            <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:14px">${c.icon} ${c.name}</span>
+              <span style="font-weight:700;color:${barColor};font-size:14px">${isNeg?"+":""}${symbol}${fmtMoney(toDisplay(Math.abs(v),baseCurrency,rates))}</span>
+            </div>
+            <div style="height:6px;background:var(--c-light);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${barColor}"></div>
+            </div>
+            <div style="font-size:11px;color:var(--c-sub);text-align:right;margin-top:2px">${pct}%</div>
+          </div>`;
+        });
+      }
+      html+=`</div>`;
+
+      // Per-member breakdown
+      members.forEach(m=>{
+        const mp=pp[m.id]||{paid:0,owe:0};
+        const mCats=Object.entries(byMember[m.id]||{}).filter(([,v])=>Math.abs(v)>0.01).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+        const mTotal=mCats.reduce((s,[,v])=>s+Math.abs(v),0)||1;
+        const color=getColor(m.name);
+        const meTag=m.id===myMemberId?` <span style="font-size:10px;color:var(--c-primary);font-weight:600">我</span>`:"";
+        html+=`<div class="settle-card">
+          <h4 class="settle-title" style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+            <span class="badge-avatar" style="background:${color};width:22px;height:22px;font-size:11px">${m.name[0]}</span>
+            ${m.name}${meTag}
+          </h4>
+          <div class="flex" style="gap:8px;margin-bottom:10px">
+            <div style="flex:1;background:var(--c-light);border-radius:10px;padding:8px 10px">
+              <div style="font-size:11px;color:var(--c-sub)">代付</div>
+              <div style="font-weight:700;color:var(--c-primary);font-size:15px">${symbol}${fmtMoney(toDisplay(mp.paid,baseCurrency,rates))}</div>
+            </div>
+            <div style="flex:1;background:var(--c-light);border-radius:10px;padding:8px 10px">
+              <div style="font-size:11px;color:var(--c-sub)">自己消費</div>
+              <div style="font-weight:700;font-size:15px">${symbol}${fmtMoney(toDisplay(mp.owe,baseCurrency,rates))}</div>
+            </div>
+          </div>`;
+        if(!mCats.length){
+          html+=`<p style="font-size:12px;color:#bbb;text-align:center;padding:8px">無分攤紀錄</p>`;
+        }else{
+          html+=`<div style="font-size:12px;color:var(--c-sub);margin-bottom:6px">類別分布（自己應分擔的部分）</div>`;
+          mCats.forEach(([cid,v])=>{
+            const c=CATEGORIES.find(x=>x.id===cid)||{icon:"📦",name:cid};
+            const pct=Math.round(Math.abs(v)/mTotal*100);
+            const isNeg=v<0;
+            const barColor=isNeg?"var(--c-green)":color;
+            html+=`<div style="padding:5px 0">
+              <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:3px;font-size:13px">
+                <span>${c.icon} ${c.name}</span>
+                <span style="font-weight:600;color:${barColor}">${isNeg?"+":""}${symbol}${fmtMoney(toDisplay(Math.abs(v),baseCurrency,rates))}</span>
+              </div>
+              <div style="height:4px;background:var(--c-light);border-radius:2px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:${barColor}"></div>
+              </div>
+            </div>`;
+          });
+        }
+        html+=`</div>`;
+      });
+    }
+  }
+
   if(tab==="settle"){
     if(members.length<2){
       html+=`<div class="empty"><div class="empty-icon">🤝</div><p>至少需要 2 位旅伴才能結算</p></div>`;
@@ -466,16 +578,39 @@ function renderTrip(){
       });
       html+=`</div>`;
 
-      html+=`<div class="settle-card"><h4 class="settle-title">💸 最簡轉帳方式</h4>`;
+      html+=`<div class="settle-card"><h4 class="settle-title">💸 待結算轉帳</h4>`;
       if(!settlement.length){
         html+=`<p style="color:#bbb;text-align:center;padding:16px">大家已經扯平了！🎉</p>`;
       }else{
-        settlement.forEach(tx=>{
+        settlement.forEach((tx,idx)=>{
           const displayAmt=toDisplay(tx.amount,baseCurrency,rates);
-          html+=`<div class="txn-row">${badgeHTML(memberMap[tx.from]||{name:"?"})}<span class="txn-arrow">→</span>${badgeHTML(memberMap[tx.to]||{name:"?"})}<span class="txn-amount">${symbol} ${fmtMoney(displayAmt)}</span></div>`;
+          html+=`<div class="txn-row" style="flex-wrap:wrap;gap:6px">
+            ${badgeHTML(memberMap[tx.from]||{name:"?"})}
+            <span class="txn-arrow">→</span>
+            ${badgeHTML(memberMap[tx.to]||{name:"?"})}
+            <span class="txn-amount">${symbol} ${fmtMoney(displayAmt)}</span>
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;background:var(--c-green);color:#fff;margin-left:auto" onclick="doMarkSettled('${tx.from}','${tx.to}',${tx.amount})">✓ 已結算</button>
+          </div>`;
         });
       }
       html+=`</div>`;
+
+      if(settledList.length){
+        html+=`<div class="settle-card"><h4 class="settle-title">✅ 已完成結算</h4>`;
+        settledList.forEach((s,idx)=>{
+          const displayAmt=toDisplay(s.amount,baseCurrency,rates);
+          const when=s.date?new Date(s.date).toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"}):"";
+          html+=`<div class="txn-row" style="flex-wrap:wrap;gap:6px;opacity:0.75">
+            ${badgeHTML(memberMap[s.from]||{name:"?"})}
+            <span class="txn-arrow">→</span>
+            ${badgeHTML(memberMap[s.to]||{name:"?"})}
+            <span style="font-weight:700;font-size:15px;color:var(--c-green);text-decoration:line-through">${symbol} ${fmtMoney(displayAmt)}</span>
+            <span style="font-size:11px;color:var(--c-sub)">${when}</span>
+            <button class="remove-btn" onclick="doUnmarkSettled(${idx})" title="取消標記">↩</button>
+          </div>`;
+        });
+        html+=`</div>`;
+      }
     }
   }
 
@@ -834,7 +969,23 @@ window.setTab=function(t){setState({tab:t})};
 window.openModal=function(m){STATE.modal=m;renderModal()};
 window.closeModal=function(){
   const overlay=document.querySelector(".modal-overlay");
-  if(overlay){overlay.classList.remove("open");setTimeout(()=>{overlay.innerHTML="";STATE.modal=null;STATE.editExpense=null},200)}
+  STATE.modal=null;STATE.editExpense=null;
+  if(overlay){
+    overlay.classList.remove("open");
+    setTimeout(()=>{if(overlay.parentNode)overlay.innerHTML=""},200);
+  }
+  // Re-render trip view immediately so optimistic updates show without waiting for Firestore round-trip
+  render();
+};
+
+window.doMarkSettled=async function(from,to,amount){
+  await saveTripData(td=>({...td,settlements:[...(td.settlements||[]),{from,to,amount,date:Date.now()}]}));
+  render();
+};
+
+window.doUnmarkSettled=async function(idx){
+  await saveTripData(td=>({...td,settlements:(td.settlements||[]).filter((_,i)=>i!==idx)}));
+  render();
 };
 
 window.doCopy=function(){
