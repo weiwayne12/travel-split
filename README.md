@@ -4,8 +4,8 @@
 
 ## 網址
 
-- **App**：https://您的帳號.github.io/travel-split/
-- **使用說明**：https://您的帳號.github.io/travel-split/guide.html
+- **App**：https://weiwayne12.github.io/travel-split/
+- **使用說明**：https://weiwayne12.github.io/travel-split/guide.html
 
 ## 主要功能
 
