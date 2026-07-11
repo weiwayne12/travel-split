@@ -125,7 +125,7 @@ input,select,button{font-family:var(--font);outline:none}
 .loading{display:flex;align-items:center;justify-content:center;height:100vh;height:100dvh;color:var(--c-sub)}
 
 /* Flex helpers */
-.flex{display:flex}.flex-wrap{flex-wrap:wrap}.gap-6{gap:6px}.gap-8{gap:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}.mb-12{margin-bottom:12px}
+.flex{display:flex}.flex-wrap{flex-wrap:wrap}.gap-6{gap:6px}.gap-8{gap:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}
 
 /* Paste batch */
 .paste-btn{flex-shrink:0;padding:14px 16px;border-radius:14px;border:1.5px solid var(--c-border);background:#fff;color:var(--c-text);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
@@ -159,7 +159,7 @@ document.addEventListener("visibilitychange",()=>{
 <script type="module">
 // Firebase SDK
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js";
 
 // --- Firebase Config ---
 const firebaseConfig = {
@@ -203,7 +203,8 @@ const COLORS = ["#e8735a","#5b9bd5","#6dbf67","#d4a843","#a87ed4","#4ec6c1","#e0
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function genCode(){const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let r="";for(let i=0;i<6;i++)r+=c[Math.floor(Math.random()*c.length)];return r}
-function getColor(name){return COLORS[Math.abs([...name].reduce((a,c)=>a+c.charCodeAt(0),0))%COLORS.length]}
+function esc(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function getColor(name){return COLORS[Math.abs([...String(name||"?")].reduce((a,c)=>a+c.charCodeAt(0),0))%COLORS.length]}
 function today(){return new Date().toISOString().slice(0,10)}
 // Format money: keep 2 decimals but trim trailing zeros (e.g. 100.00 -> 100, 1397.50 -> 1397.5)
 function fmtMoney(n){
@@ -242,6 +243,37 @@ function getAllowedCurrencies(td){
   if(!Array.isArray(list)||!list.length)return CURRENCIES.map(c=>c.code);
   // Always include TWD
   return list.includes("TWD")?list:["TWD",...list];
+}
+
+function assertMembersExist(td,ids){
+  const memberIds=new Set((td.members||[]).map(m=>m.id));
+  if(ids.some(id=>!memberIds.has(id)))throw new Error("旅伴名單已變動，請重新整理後再試");
+}
+
+function assertExpenseWrite(td,exp,editId=null){
+  const existing=editId?(td.expenses||[]).find(e=>e.id===editId):null;
+  if(editId&&!existing)throw new Error("這筆紀錄已被刪除，請重新整理後再試");
+  assertMembersExist(td,[...getPayments(exp).map(p=>p.memberId),...(exp.splits||[]).map(s=>s.memberId)]);
+  if((!existing||existing.currency!==exp.currency)&&!getAllowedCurrencies(td).includes(exp.currency)){
+    throw new Error(`幣別 ${exp.currency} 已停用，請重新選擇`);
+  }
+}
+
+function assertCanRemoveMember(td,id){
+  if(!(td.members||[]).some(m=>m.id===id))throw new Error("此旅伴已不存在");
+  if((td.expenses||[]).some(e=>getPayments(e).some(p=>p.memberId===id))){
+    throw new Error("此旅伴仍有付款紀錄，請先編輯或刪除那些消費");
+  }
+  if((td.settlements||[]).some(s=>s.from===id||s.to===id)){
+    throw new Error("此旅伴仍有結算紀錄，請先取消結算");
+  }
+  (td.expenses||[]).filter(e=>(e.splits||[]).some(s=>s.memberId===id)).forEach(e=>{
+    const remaining=e.splits.filter(s=>s.memberId!==id);
+    const sum=remaining.reduce((total,s)=>total+s.ratio,0);
+    if(!remaining.length||!Number.isFinite(sum)||sum<=0){
+      throw new Error("此旅伴是某筆消費的唯一或全部歸零分攤者，請先調整該筆消費");
+    }
+  });
 }
 
 // --- Settlement ---
@@ -321,6 +353,8 @@ const $=id=>document.getElementById(id);
 const app=$("app");
 let STATE={screen:"landing",tripCode:null,myMemberId:null,tripData:null,tab:"expenses",modal:null,editExpense:null,error:"",landingMode:null};
 let unsubscribe=null;
+const migratingSettlementTrips=new Set();
+let refreshRatesModalOnSnapshot=false;
 
 function setState(patch){
   Object.assign(STATE,patch);
@@ -328,10 +362,11 @@ function setState(patch){
 }
 
 function badgeHTML(member,opts={}){
-  const color=getColor(member.name);
+  const name=String(member?.name||"?");
+  const color=getColor(name);
   const cls=opts.selected?"badge selected":"badge";
   const lg=opts.large?" badge-lg":"";
-  return `<div class="${cls}${lg}" style="--badge-color:${color}" ${opts.clickId?`data-click="${opts.clickId}"`:""}><span class="badge-avatar" style="background:${color}">${member.name[0]}</span>${member.name}</div>`;
+  return `<div class="${cls}${lg}" style="--badge-color:${color}" ${opts.clickId?`data-click="${esc(opts.clickId)}"`:""}><span class="badge-avatar" style="background:${color}">${esc(name[0])}</span>${esc(name)}</div>`;
 }
 
 // ===================== SCREENS =====================
@@ -345,7 +380,7 @@ function renderLanding(){
   const mode=STATE.landingMode||null;
 
   let html=`<div class="landing"><div class="landing-hero"><div class="icon"><svg viewBox="0 0 100 100" width="56" height="56" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" rx="22" fill="#e8735a"/><text x="50" y="76" font-size="74" font-family="Arial Black,sans-serif" font-weight="900" fill="white" text-anchor="middle">W</text></svg></div><h1>WEIBEAR</h1><p>多人共享 · 即時同步 · 自動結算</p></div>`;
-  if(error)html+=`<div class="error-msg mb-12">${error}</div>`;
+  if(error)html+=`<div class="error-msg mb-12">${esc(error)}</div>`;
 
   if(!mode){
     html+=`<div class="landing-form">
@@ -354,7 +389,7 @@ function renderLanding(){
     if(myTrips.length){
       html+=`<div class="mt-16"><p style="font-size:13px;color:var(--c-sub);margin-bottom:8px;font-weight:600">最近的旅程</p>`;
       myTrips.forEach(t=>{
-        html+=`<div class="trip-item" onclick="doRejoin('${t.code}','${t.myMemberId}')"><span class="name">${t.name}</span><div class="flex gap-8" style="align-items:center"><span class="code">${t.code}</span><button class="remove-btn" onclick="event.stopPropagation();doDeleteTrip('${t.code}')">✕</button></div></div>`;
+        html+=`<div class="trip-item" data-action="rejoin" data-code="${esc(t.code)}" data-member-id="${esc(t.myMemberId)}"><span class="name">${esc(t.name)}</span><div class="flex gap-8" style="align-items:center"><span class="code">${esc(t.code)}</span><button class="remove-btn" data-action="delete-trip" data-code="${esc(t.code)}">✕</button></div></div>`;
       });
       html+=`</div>`;
     }
@@ -386,7 +421,7 @@ function renderTrip(){
   const rates=td.rates||DEFAULT_RATES;
   const memberMap={};members.forEach(m=>{memberMap[m.id]=m});
   const myMember=memberMap[myMemberId]||{name:"?"};
-  const totalTWD=expenses.filter(e=>e.category!=="loan").reduce((s,e)=>s+e.amount*(rates[e.currency]||1)*expSign(e),0);
+  const totalTWD=expenses.filter(e=>e.category!=="loan").reduce((s,e)=>s+e.amount*expRate(e,rates)*expSign(e),0);
   const pp=perPersonCalc(members,expenses,rates);
   const settledList=td.settlements||[];
   const settlement=calcSettlement(members,expenses,rates,settledList);
@@ -402,7 +437,7 @@ function renderTrip(){
           <button class="header-btn" onclick="doLeave()">←</button>
           <h1>WEIBEAR</h1>
         </div>
-        <div class="sub">${members.length} 位旅伴 · 我是 ${myMember.name}</div>
+        <div class="sub">${members.length} 位旅伴 · 我是 ${esc(myMember.name)}</div>
       </div>
       <div class="header-actions">
         <button class="header-btn" onclick="openModal('share')">📤 邀請</button>
@@ -410,7 +445,7 @@ function renderTrip(){
         <button class="header-btn" onclick="doForceReload()" title="強制更新到最新版">🔄</button>
       </div>
     </div>
-    <div class="total-bar"><span class="label">總花費（${baseCurrency}）</span><span class="amount">${symbol} ${fmtMoney(toDisplay(totalTWD,baseCurrency,rates))}</span></div>
+    <div class="total-bar"><span class="label">總花費（${esc(baseCurrency)}）</span><span class="amount">${esc(symbol)} ${fmtMoney(toDisplay(totalTWD,baseCurrency,rates))}</span></div>
   </div>
 
   <div class="tabs">
@@ -434,17 +469,17 @@ function renderTrip(){
       const amtPrefix=isRefund?"+":"";
       const amtColor=isRefund?"color:var(--c-green)":"";
       const convHTML=exp.currency!=="TWD"?`<div class="convert">≈ ${amtPrefix}${symbol}${fmtMoney(toDisplay(exp.amount*expRate(exp,rates),baseCurrency,rates))}</div>`:"";
-      const rateTag=exp.customRate?`<span style="font-size:10px;color:var(--c-gold);margin-left:4px" title="自訂匯率 1${exp.currency}=${exp.customRate}TWD">📌</span>`:"";
+      const rateTag=exp.customRate?`<span style="font-size:10px;color:var(--c-gold);margin-left:4px" title="自訂匯率 1${esc(exp.currency)}=${esc(exp.customRate)}TWD">📌</span>`:"";
       const payers=getPayments(exp);
       const isLoan=exp.category==="loan";
       let mainLine;
       if(isLoan){
         const lender=(memberMap[payers[0]?.memberId]||{name:"?"}).name;
         const borrower=(memberMap[exp.splits[0]?.memberId]||{name:"?"}).name;
-        mainLine=`${lender} → ${borrower} · ${exp.date}`;
+        mainLine=`${esc(lender)} → ${esc(borrower)} · ${esc(exp.date)}`;
       }else{
         const payerLabel=payers.length>1?payers.map(p=>(memberMap[p.memberId]||{name:"?"}).name).join("、"):(memberMap[payers[0]?.memberId]||{name:"?"}).name;
-        mainLine=`${payerLabel} 代付 · ${exp.date}`;
+        mainLine=`${esc(payerLabel)} ${isRefund?"收到":"代付"} · ${esc(exp.date)}`;
       }
       // Personal payment account tag (only visible if I'm one of the payers)
       const iAmPayer=payers.some(p=>p.memberId===myMemberId);
@@ -454,14 +489,14 @@ function renderTrip(){
         if(acct&&(acct.type||acct.note)){
           const accDef=PAY_ACCOUNTS.find(a=>a.id===acct.type);
           const label=accDef?`${accDef.icon} ${acct.name||accDef.name}`:(acct.note?`📒 ${acct.note}`:"");
-          if(label)payAcctTag=`<span style="font-size:11px;color:var(--c-sub);margin-left:6px;background:var(--c-light);padding:2px 6px;border-radius:6px">${label}</span>`;
+          if(label)payAcctTag=`<span style="font-size:11px;color:var(--c-sub);margin-left:6px;background:var(--c-light);padding:2px 6px;border-radius:6px">${esc(label)}</span>`;
         }
       }
-      const noteHTML=exp.note?`<div style="font-size:11px;color:var(--c-sub);margin-top:3px;font-style:italic">📝 ${exp.note}</div>`:"";
-      html+=`<div class="card" onclick="doEditExpense('${exp.id}')">
+      const noteHTML=exp.note?`<div style="font-size:11px;color:var(--c-sub);margin-top:3px;font-style:italic">📝 ${esc(exp.note)}</div>`:"";
+      html+=`<div class="card" data-action="edit-expense" data-id="${esc(exp.id)}">
         <span class="card-icon">${cat.icon}</span>
-        <div class="card-body"><div class="card-title">${exp.description||cat.name}${rateTag}${payAcctTag}</div><div class="card-sub">${mainLine}</div>${noteHTML}</div>
-        <div class="card-amount"><div class="main" style="${amtColor}">${amtPrefix}${cur.symbol}${exp.amount.toLocaleString()}</div>${convHTML}</div>
+        <div class="card-body"><div class="card-title">${esc(exp.description||cat.name)}${rateTag}${payAcctTag}</div><div class="card-sub">${mainLine}</div>${noteHTML}</div>
+        <div class="card-amount"><div class="main" style="${amtColor}">${amtPrefix}${cur.symbol}${fmtMoney(exp.amount)}</div>${convHTML}</div>
       </div>`;
     });
   }
@@ -470,7 +505,7 @@ function renderTrip(){
     html+=`<button class="btn-primary mb-12" onclick="openModal('addMember')">+ 新增旅伴</button>`;
     members.forEach(m=>{
       const meTag=m.id===myMemberId?`<span class="me-tag">我</span>`:"";
-      const removeBtn=m.id!==myMemberId?`<button class="remove-btn" onclick="event.stopPropagation();doRemoveMember('${m.id}','${m.name}')">✕</button>`:"";
+      const removeBtn=m.id!==myMemberId?`<button class="remove-btn" data-action="remove-member" data-id="${esc(m.id)}">✕</button>`:"";
       html+=`<div class="member-card">
         <div class="member-info">${badgeHTML(m,{large:true})}${meTag}</div>
         <div class="flex gap-8" style="align-items:center">
@@ -498,9 +533,9 @@ function renderTrip(){
           const pct=Math.round(Math.abs(v)/totalAbs*100);
           const isNeg=v<0;
           const barColor=isNeg?"var(--c-green)":"var(--c-primary)";
-          html+=`<div style="padding:8px 0;border-bottom:1px solid var(--c-light);cursor:pointer" onclick="doShowCatDetail('${cid}',null)">
+          html+=`<div style="padding:8px 0;border-bottom:1px solid var(--c-light);cursor:pointer" data-action="show-cat-detail" data-category="${esc(cid)}" data-member-id="">
             <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:4px">
-              <span style="font-size:14px">${c.icon} ${c.name} <span style="font-size:11px;color:var(--c-sub)">›</span></span>
+              <span style="font-size:14px">${c.icon} ${esc(c.name)} <span style="font-size:11px;color:var(--c-sub)">›</span></span>
               <span style="font-weight:700;color:${barColor};font-size:14px">${isNeg?"+":""}${symbol}${fmtMoney(toDisplay(Math.abs(v),baseCurrency,rates))}</span>
             </div>
             <div style="height:6px;background:var(--c-light);border-radius:3px;overflow:hidden">
@@ -514,19 +549,19 @@ function renderTrip(){
 
       // Per-member breakdown
       members.forEach(m=>{
-        const mp=pp[m.id]||{paid:0,owe:0};
         const mCats=Object.entries(byMember[m.id]||{}).filter(([,v])=>Math.abs(v)>0.01).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
         const mTotal=mCats.reduce((s,[,v])=>s+Math.abs(v),0)||1;
         const color=getColor(m.name);
         const meTag=m.id===myMemberId?` <span style="font-size:10px;color:var(--c-primary);font-weight:600">我</span>`:"";
+        const expenseOwe=Object.values(byMember[m.id]||{}).reduce((sum,value)=>sum+value,0);
         html+=`<div class="settle-card">
           <h4 class="settle-title" style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
-            <span class="badge-avatar" style="background:${color};width:22px;height:22px;font-size:11px">${m.name[0]}</span>
-            ${m.name}${meTag}
+            <span class="badge-avatar" style="background:${color};width:22px;height:22px;font-size:11px">${esc(String(m.name||"?")[0])}</span>
+            ${esc(m.name)}${meTag}
           </h4>
           <div style="background:var(--c-light);border-radius:10px;padding:10px 14px;margin-bottom:10px">
             <div style="font-size:11px;color:var(--c-sub)">應負擔金額</div>
-            <div style="font-weight:700;color:var(--c-primary);font-size:18px">${symbol}${fmtMoney(toDisplay(mp.owe,baseCurrency,rates))}</div>
+            <div style="font-weight:700;color:var(--c-primary);font-size:18px">${symbol}${fmtMoney(toDisplay(expenseOwe,baseCurrency,rates))}</div>
           </div>`;
         if(!mCats.length){
           html+=`<p style="font-size:12px;color:#bbb;text-align:center;padding:8px">無分攤紀錄</p>`;
@@ -537,9 +572,9 @@ function renderTrip(){
             const pct=Math.round(Math.abs(v)/mTotal*100);
             const isNeg=v<0;
             const barColor=isNeg?"var(--c-green)":color;
-            html+=`<div style="padding:5px 0;cursor:pointer" onclick="doShowCatDetail('${cid}','${m.id}')">
+            html+=`<div style="padding:5px 0;cursor:pointer" data-action="show-cat-detail" data-category="${esc(cid)}" data-member-id="${esc(m.id)}">
               <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:3px;font-size:13px">
-                <span>${c.icon} ${c.name} <span style="font-size:10px;color:var(--c-sub)">›</span></span>
+                <span>${c.icon} ${esc(c.name)} <span style="font-size:10px;color:var(--c-sub)">›</span></span>
                 <span style="font-weight:600;color:${barColor}">${isNeg?"+":""}${symbol}${fmtMoney(toDisplay(Math.abs(v),baseCurrency,rates))}</span>
               </div>
               <div style="height:4px;background:var(--c-light);border-radius:2px;overflow:hidden">
@@ -561,11 +596,12 @@ function renderTrip(){
     }else{
       html+=`<div class="settle-card"><h4 class="settle-title">📊 每人收支</h4>`;
       members.forEach(m=>{
-        const netTWD=(pp[m.id]?.paid||0)-(pp[m.id]?.owe||0);
+        let netTWD=(pp[m.id]?.paid||0)-(pp[m.id]?.owe||0);
+        settledList.forEach(s=>{if(s.from===m.id)netTWD+=s.amount;if(s.to===m.id)netTWD-=s.amount;});
         const net=toDisplay(netTWD,baseCurrency,rates);
         const cls=net>0.01?"net-positive":net<-0.01?"net-negative":"net-zero";
         const meTag=m.id===myMemberId?` <span style="font-size:9px;color:var(--c-primary)">我</span>`:"";
-        html+=`<div class="settle-row"><div class="flex gap-6" style="align-items:center">${badgeHTML(m)}${meTag}</div><span class="${cls}">${net>0?"+":""}${fmtMoney(net)} ${baseCurrency}</span></div>`;
+        html+=`<div class="settle-row"><div class="flex gap-6" style="align-items:center">${badgeHTML(m)}${meTag}</div><span class="${cls}">${net>0?"+":""}${fmtMoney(net)} ${esc(baseCurrency)}</span></div>`;
       });
       html+=`</div>`;
 
@@ -580,7 +616,7 @@ function renderTrip(){
             <span class="txn-arrow">→</span>
             ${badgeHTML(memberMap[tx.to]||{name:"?"})}
             <span class="txn-amount">${symbol} ${fmtMoney(displayAmt)}</span>
-            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;background:var(--c-green);color:#fff;margin-left:auto" onclick="doMarkSettled('${tx.from}','${tx.to}',${tx.amount})">✓ 已結算</button>
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;background:var(--c-green);color:#fff;margin-left:auto" data-action="mark-settled" data-from="${esc(tx.from)}" data-to="${esc(tx.to)}" data-amount="${tx.amount}">✓ 已結算</button>
           </div>`;
         });
       }
@@ -588,7 +624,8 @@ function renderTrip(){
 
       if(settledList.length){
         html+=`<div class="settle-card"><h4 class="settle-title">✅ 已完成結算</h4>`;
-        settledList.forEach((s,idx)=>{
+        const settlementsMigrating=settledList.some(s=>!s.id);
+        settledList.forEach(s=>{
           const displayAmt=toDisplay(s.amount,baseCurrency,rates);
           const when=s.date?new Date(s.date).toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"}):"";
           html+=`<div class="txn-row" style="flex-wrap:wrap;gap:6px;opacity:0.75">
@@ -597,9 +634,10 @@ function renderTrip(){
             ${badgeHTML(memberMap[s.to]||{name:"?"})}
             <span style="font-weight:700;font-size:15px;color:var(--c-green);text-decoration:line-through">${symbol} ${fmtMoney(displayAmt)}</span>
             <span style="font-size:11px;color:var(--c-sub)">${when}</span>
-            <button class="remove-btn" onclick="doUnmarkSettled(${idx})" title="取消標記">↩</button>
+            <button class="remove-btn" ${settlementsMigrating?"disabled":""} data-action="unmark-settled" data-id="${esc(s.id||"")}" title="${settlementsMigrating?"同步中...":"取消標記"}">↩</button>
           </div>`;
         });
+        if(settlementsMigrating)html+=`<p style="font-size:12px;color:var(--c-sub);text-align:center">結算紀錄同步中...</p>`;
         html+=`</div>`;
       }
     }
@@ -621,7 +659,7 @@ function renderModal(){
     title="邀請旅伴加入";
     body=`<div style="text-align:center">
       <p style="font-size:14px;color:#888">把這個代碼傳給旅伴</p>
-      <div class="share-code">${tripCode}</div>
+      <div class="share-code">${esc(tripCode)}</div>
       <button class="btn-primary" id="copyBtn" onclick="doCopy()">複製代碼</button>
       <p style="font-size:12px;color:#bbb;margin-top:12px;line-height:1.6">旅伴開啟同一個網址 → 點「加入旅程」→ 輸入代碼即可同步</p>
     </div>`;
@@ -653,7 +691,7 @@ function renderModal(){
     CURRENCIES.forEach(c=>{
       const on=allowed.includes(c.code);
       const isTWD=c.code==="TWD";
-      body+=`<button type="button" class="pill ${on?"active":""}" ${isTWD?"disabled style='opacity:0.6;cursor:not-allowed'":""} onclick="${isTWD?"":`doToggleAllowedCurrency('${c.code}')`}">${c.symbol} ${c.code}</button>`;
+      body+=`<button type="button" class="pill ${on?"active":""}" ${isTWD?"disabled style='opacity:0.6;cursor:not-allowed'":"data-action=\"toggle-currency\""} data-code="${c.code}">${c.symbol} ${c.code}</button>`;
     });
     body+=`</div>
     </div>
@@ -668,7 +706,7 @@ function renderModal(){
       body+=`<div class="flex gap-8 mb-12" style="align-items:center">
         <span style="width:80px;font-size:14px;font-weight:600">${c.code}</span>
         <span style="font-size:12px;color:var(--c-sub);width:24px">1 =</span>
-        <input type="number" class="input" style="width:100px" id="rate-${c.code}" value="${rates[c.code]||0}" step="0.01" onchange="doUpdateRate('${c.code}',this.value)">
+        <input type="number" class="input" style="width:100px" id="rate-${c.code}" value="${esc(rates[c.code]||0)}" step="0.01" data-change="update-rate" data-code="${c.code}">
         <span style="font-size:12px;color:var(--c-sub)">TWD</span>
       </div>`;
     });
@@ -688,13 +726,13 @@ function renderModal(){
 
     body=`<div style="display:flex;flex-direction:column;gap:14px">
       <div><label class="label">類別</label><div class="flex flex-wrap gap-6" id="expenseCatArea">`;
-    CATEGORIES.forEach(c=>{
-      body+=`<button type="button" class="pill ${c.id===curCat?"active":""}" data-cat="${c.id}" onclick="setExpField('category','${c.id}')">${c.icon} ${c.name}</button>`;
+    CATEGORIES.filter(c=>c.id!=="loan").forEach(c=>{
+      body+=`<button type="button" class="pill ${c.id===curCat?"active":""}" data-cat="${c.id}" data-action="set-category" data-value="${c.id}">${c.icon} ${c.name}</button>`;
     });
     body+=`</div></div>
-      <div><label class="label">說明</label><input class="input" id="expDesc" placeholder="例：午餐拉麵" value="${exp?.description||""}"></div>
+      <div><label class="label">說明</label><input class="input" id="expDesc" placeholder="例：午餐拉麵" value="${esc(exp?.description||"")}"></div>
       <div class="flex gap-8">
-        <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="expAmount" placeholder="0" value="${exp?.amount||""}" inputmode="decimal"></div>
+        <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="expAmount" placeholder="0" value="${esc(exp?.amount||"")}" inputmode="decimal"></div>
         <div style="width:110px"><label class="label">幣別</label><select class="input" id="expCurrency" style="appearance:auto" onchange="onExpCurrencyChange(this.value)">`;
     {const allowed=getAllowedCurrencies(td);CURRENCIES.filter(c=>allowed.includes(c.code)||c.code===curCurrency).forEach(c=>{body+=`<option value="${c.code}" ${c.code===curCurrency?"selected":""}>${c.symbol} ${c.code}</option>`;});}
     const tripRate=rates[curCurrency]||1;
@@ -707,14 +745,14 @@ function renderModal(){
           <button type="button" class="pill ${hasCustomRate?"active":""}" id="rateCustom" onclick="toggleExpCustomRate(true)">自訂匯率</button>
         </div>
         <div id="customRateInputWrap" style="display:${hasCustomRate?"flex":"none"};align-items:center;gap:8px">
-          <span style="font-size:13px;white-space:nowrap">1 <span id="customRateCur">${curCurrency}</span> =</span>
-          <input type="number" class="input" id="expCustomRate" style="width:110px" value="${exp?.customRate||tripRate}" step="0.0001" inputmode="decimal" placeholder="${tripRate}">
+          <span style="font-size:13px;white-space:nowrap">1 <span id="customRateCur">${esc(curCurrency)}</span> =</span>
+          <input type="number" class="input" id="expCustomRate" style="width:110px" value="${esc(exp?.customRate||tripRate)}" step="0.0001" inputmode="decimal" placeholder="${esc(tripRate)}">
           <span style="font-size:13px">TWD</span>
         </div>
       </div>
-      <div><label class="label">日期</label><input type="date" class="input" id="expDate" value="${exp?.date||today()}"></div>
-      <div><label class="label">備註（選填）</label><textarea class="input" id="expNote" placeholder="額外要記錄的事項..." style="resize:vertical;min-height:54px;font-size:14px;line-height:1.5">${exp?.note||""}</textarea></div>
-      <div><label class="label">誰付的？</label>
+      <div><label class="label">日期</label><input type="date" class="input" id="expDate" value="${esc(exp?.date||today())}"></div>
+      <div><label class="label">備註（選填）</label><textarea class="input" id="expNote" placeholder="額外要記錄的事項..." style="resize:vertical;min-height:54px;font-size:14px;line-height:1.5">${esc(exp?.note||"")}</textarea></div>
+      <div><label class="label" id="payerLabel">${curCat==="refund"?"誰收到的？":"誰付的？"}</label>
         <div class="flex gap-8 mb-8">
           <button type="button" class="pill ${!isMultiPay?"active":""}" id="paySingle" onclick="setPayMode('single')">一人付</button>
           <button type="button" class="pill ${isMultiPay?"active":""}" id="payMulti" onclick="setPayMode('multi')">多人付</button>
@@ -730,7 +768,7 @@ function renderModal(){
         const pay=expPayments.find(p=>p.memberId===m.id);
         const v=pay?pay.amount:0;
         const color=getColor(m.name);
-        body+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${v}" data-payment="${m.id}" inputmode="decimal" placeholder="0" oninput="updatePaidSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symPay}</span></div>`;
+        body+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${esc(String(m.name||"?")[0])}</span>${esc(m.name)}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${esc(v)}" data-payment="${esc(m.id)}" inputmode="decimal" placeholder="0" oninput="updatePaidSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symPay}</span></div>`;
       });
       body+=`<div id="paidSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div>`;
     }
@@ -751,7 +789,7 @@ function renderModal(){
       exp.splits.forEach(s=>{
         const m=members.find(x=>x.id===s.memberId);
         const actualAmt=totalRatio>0?Math.round((s.ratio/totalRatio)*exp.amount*100)/100:0;
-        if(m)body+=`<div class="flex gap-8 mb-12" style="align-items:center">${badgeHTML(m)}<input type="number" class="input" style="flex:1;max-width:120px" value="${actualAmt}" data-ratio="${m.id}" inputmode="decimal" placeholder="0"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${(CURRENCIES.find(c=>c.code===exp.currency)||CURRENCIES[0]).symbol}</span></div>`;
+        if(m)body+=`<div class="flex gap-8 mb-12" style="align-items:center">${badgeHTML(m)}<input type="number" class="input" style="flex:1;max-width:120px" value="${esc(actualAmt)}" data-ratio="${esc(m.id)}" inputmode="decimal" placeholder="0"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${(CURRENCIES.find(c=>c.code===exp.currency)||CURRENCIES[0]).symbol}</span></div>`;
       });
     }
     body+=`<div id="customSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div></div>`;
@@ -762,13 +800,13 @@ function renderModal(){
       <label class="label">💳 我的付款帳戶（只有自己看得到）</label>
       <p style="font-size:11px;color:var(--c-sub);margin-bottom:8px">記錄這筆是用哪個帳戶/卡片付的，旅伴看不到</p>
       <div class="flex flex-wrap gap-6 mb-8" id="payAcctArea">`;
-    body+=`<button type="button" class="pill ${!myAcct?.type?"active":""}" data-acct="" onclick="setPayAcctType('')">無</button>`;
+    body+=`<button type="button" class="pill ${!myAcct?.type?"active":""}" data-acct="" data-action="set-pay-account" data-value="">無</button>`;
     PAY_ACCOUNTS.forEach(a=>{
-      body+=`<button type="button" class="pill ${myAcct?.type===a.id?"active":""}" data-acct="${a.id}" onclick="setPayAcctType('${a.id}')">${a.icon} ${a.name}</button>`;
+      body+=`<button type="button" class="pill ${myAcct?.type===a.id?"active":""}" data-acct="${a.id}" data-action="set-pay-account" data-value="${a.id}">${a.icon} ${a.name}</button>`;
     });
     body+=`</div>
-      <input class="input" id="payAcctName" placeholder="自訂帳戶名稱（如：玉山卡、悠遊卡）" value="${myAcct?.name||""}" style="font-size:13px;margin-bottom:6px">
-      <input class="input" id="payAcctNote" placeholder="備註（選填，例如：分期 6 期）" value="${myAcct?.note||""}" style="font-size:13px">
+      <input class="input" id="payAcctName" placeholder="自訂帳戶名稱（如：玉山卡、悠遊卡）" value="${esc(myAcct?.name||"")}" style="font-size:13px;margin-bottom:6px">
+      <input class="input" id="payAcctNote" placeholder="備註（選填，例如：分期 6 期）" value="${esc(myAcct?.note||"")}" style="font-size:13px">
     </div>
       <button class="btn-primary" onclick="doSaveExpense()">
         ${exp?"儲存修改":"新增"}</button>`;
@@ -789,7 +827,7 @@ function renderModal(){
     members.forEach(m=>{body+=badgeHTML(m,{selected:m.id===lf.borrower,clickId:`loanBorrower-${m.id}`});});
     body+=`</div></div>
       <div class="flex gap-8">
-        <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="loanAmount" placeholder="0" value="${lf.amount||""}" inputmode="decimal"></div>
+        <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="loanAmount" placeholder="0" value="${esc(lf.amount||"")}" inputmode="decimal"></div>
         <div style="width:110px"><label class="label">幣別</label><select class="input" id="loanCurrency" style="appearance:auto" onchange="onLoanCurrencyChange(this.value)">`;
     {const allowed=getAllowedCurrencies(td);const curLoan=lf.currency||"TWD";CURRENCIES.filter(c=>allowed.includes(c.code)||c.code===curLoan).forEach(c=>{body+=`<option value="${c.code}" ${c.code===curLoan?"selected":""}>${c.symbol} ${c.code}</option>`;});}
     const loanCur=lf.currency||"TWD";
@@ -804,15 +842,15 @@ function renderModal(){
           <button type="button" class="pill ${loanHasCustom?"active":""}" id="loanRateCustom" onclick="toggleLoanCustomRate(true)">自訂匯率</button>
         </div>
         <div id="loanCustomRateInputWrap" style="display:${loanHasCustom?"flex":"none"};align-items:center;gap:8px">
-          <span style="font-size:13px;white-space:nowrap">1 <span id="loanCustomRateCur">${loanCur}</span> =</span>
-          <input type="number" class="input" id="loanCustomRate" style="width:110px" value="${lf.customRate||loanTripRate}" step="0.0001" inputmode="decimal" placeholder="${loanTripRate}">
+          <span style="font-size:13px;white-space:nowrap">1 <span id="loanCustomRateCur">${esc(loanCur)}</span> =</span>
+          <input type="number" class="input" id="loanCustomRate" style="width:110px" value="${esc(lf.customRate||loanTripRate)}" step="0.0001" inputmode="decimal" placeholder="${esc(loanTripRate)}">
           <span style="font-size:13px">TWD</span>
         </div>
         <p style="font-size:11px;color:var(--c-sub);margin-top:6px">結算時以這個匯率換算成 TWD</p>
       </div>
-      <div><label class="label">日期</label><input type="date" class="input" id="loanDate" value="${lf.date||today()}"></div>
-      <div><label class="label">說明（選填）</label><input class="input" id="loanDesc" placeholder="例：飯店訂金" value="${lf.description||""}"></div>
-      <div><label class="label">備註（選填）</label><textarea class="input" id="loanNote" placeholder="額外要記錄的事項..." style="resize:vertical;min-height:54px;font-size:14px;line-height:1.5">${lf.note||""}</textarea></div>
+      <div><label class="label">日期</label><input type="date" class="input" id="loanDate" value="${esc(lf.date||today())}"></div>
+      <div><label class="label">說明（選填）</label><input class="input" id="loanDesc" placeholder="例：飯店訂金" value="${esc(lf.description||"")}"></div>
+      <div><label class="label">備註（選填）</label><textarea class="input" id="loanNote" placeholder="額外要記錄的事項..." style="resize:vertical;min-height:54px;font-size:14px;line-height:1.5">${esc(lf.note||"")}</textarea></div>
       <button class="btn-primary" onclick="doSaveLoan()">${exp?"儲存修改":"新增借款"}</button>`;
     if(exp)body+=`<button class="btn-danger" onclick="doDeleteExpense()">刪除這筆借款</button>`;
     body+=`</div>`;
@@ -849,30 +887,30 @@ function renderModal(){
           if(myS){
             const myAmt=fullAmt*(myS.ratio/tot);
             myShareTotal+=myAmt;
-            myShareLine=`<div style="font-size:11px;color:var(--c-primary);margin-top:2px">分擔 ${sym}${fmtMoney(toDisplay(Math.abs(myAmt),baseCur,rates))}</div>`;
+            myShareLine=`<div style="font-size:11px;color:var(--c-primary);margin-top:2px">${sign<0?"分得":"分擔"} ${sym}${fmtMoney(toDisplay(Math.abs(myAmt),baseCur,rates))}</div>`;
           }
         }
         const isNeg=sign<0;
         const pref=isNeg?"+":"";
         const col=isNeg?"var(--c-green)":"var(--c-primary)";
-        const noteH=exp.note?`<div style="font-size:11px;color:var(--c-sub);font-style:italic;margin-top:2px">📝 ${exp.note}</div>`:"";
-        body+=`<div style="padding:10px 12px;background:var(--c-bg);border-radius:10px;cursor:pointer" onclick="doFromCatDetailEdit('${exp.id}')">
+        const noteH=exp.note?`<div style="font-size:11px;color:var(--c-sub);font-style:italic;margin-top:2px">📝 ${esc(exp.note)}</div>`:"";
+        body+=`<div style="padding:10px 12px;background:var(--c-bg);border-radius:10px;cursor:pointer" data-action="edit-cat-expense" data-id="${esc(exp.id)}">
           <div class="flex" style="justify-content:space-between;align-items:flex-start;gap:8px">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:14px">${exp.description||c.name}</div>
-              <div style="font-size:11px;color:var(--c-sub);margin-top:2px">${payerNames} 代付 · ${exp.date}</div>
+              <div style="font-weight:600;font-size:14px">${esc(exp.description||c.name)}</div>
+              <div style="font-size:11px;color:var(--c-sub);margin-top:2px">${esc(payerNames)} ${sign<0?"收到":"代付"} · ${esc(exp.date)}</div>
               ${myShareLine}
               ${noteH}
             </div>
             <div style="text-align:right;flex-shrink:0">
-              <div style="font-weight:700;font-size:15px;color:${col}">${pref}${cur.symbol}${exp.amount.toLocaleString()}</div>
+              <div style="font-weight:700;font-size:15px;color:${col}">${pref}${cur.symbol}${fmtMoney(exp.amount)}</div>
               ${exp.currency!=="TWD"?`<div style="font-size:11px;color:#bbb">≈ ${pref}${sym}${fmtMoney(toDisplay(Math.abs(fullAmt),baseCur,rates))}</div>`:""}
             </div>
           </div>
         </div>`;
       });
       body+=`<div style="border-top:1px solid var(--c-light);margin-top:8px;padding-top:12px;display:flex;justify-content:space-between;font-weight:700">
-        <span>${focusMember?`${focusMember.name} 應分擔`:"類別總計"}</span>
+        <span>${focusMember?`${esc(focusMember.name)} ${expSign(items[0])<0?"應分得":"應分擔"}`:"類別總計"}</span>
         <span style="color:var(--c-primary)">${total<0?"+":""}${sym}${fmtMoney(toDisplay(Math.abs(focusMember?myShareTotal:total),baseCur,rates))}</span>
       </div>`;
     }
@@ -883,8 +921,8 @@ function renderModal(){
     title="📋 批次新增消費";
     const memberList=members.map(m=>m.name).join("、");
     const template=`旅遊成員：${memberList}
-幣別選項：TWD、JPY、USD、EUR、KRW、GBP、THB、SGD、HKD、MYR、AUD、CNY
-類別選項：food(餐飲) transport(交通) hotel(住宿) ticket(門票) shopping(購物) other(其他)
+幣別選項：TWD、JPY、USD、EUR、KRW、GBP、THB、VND、SGD、HKD、MYR、AUD、CNY
+類別選項：food(餐飲) transport(交通) hotel(住宿) ticket(門票) shopping(購物) other(其他) refund(退稅/收入；付款方欄位代表收到款項的人)
 
 請把以下消費記錄轉成格式（每行一筆，TS| 開頭，共 8 欄）：
 TS|說明|金額|幣別|類別|日期(YYYY-MM-DD)|付款方式|分攤方式
@@ -905,7 +943,7 @@ TS|說明|金額|幣別|類別|日期(YYYY-MM-DD)|付款方式|分攤方式
   付款方式：<code>Wayne</code> 或 <code>paid:Wayne=100,Lina=50</code><br>
   分攤方式：<code>equal:Wayne,Lina</code> 或 <code>custom:Wayne=80,Lina=70</code>
 </div>
-<button class="btn-secondary mb-12" style="width:100%;font-size:13px" onclick="doCopyTemplate()">📄 複製 AI 提示範本</button>
+<button class="btn-secondary mb-12" style="width:100%;font-size:13px" onclick="doCopyTemplate(event)">📄 複製 AI 提示範本</button>
 <label class="label">貼上 AI 回傳的結果</label>
 <textarea class="paste-textarea" id="pasteInput" placeholder="TS|午餐拉麵|1200|TWD|food|2026-04-25|Wayne|equal:Wayne,Alice&#10;TS|計程車|800|TWD|transport|2026-04-25|Alice|custom:Wayne=400,Alice=400&#10;TS|聚餐|150|TWD|food|2026-04-26|paid:Wayne=100,Lina=50|custom:Wayne=80,Lina=70" oninput="renderPastePreview()"></textarea>
 <div class="paste-preview" id="pastePreview"></div>
@@ -924,7 +962,7 @@ TS|說明|金額|幣別|類別|日期(YYYY-MM-DD)|付款方式|分攤方式
     overlay.onclick=e=>{if(e.target===overlay)closeModal()};
     document.body.appendChild(overlay);
   }
-  overlay.innerHTML=`<div class="modal"><div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="closeModal()">✕</button></div><div class="modal-body">${body}</div></div>`;
+  overlay.innerHTML=`<div class="modal"><div class="modal-header"><h3>${esc(title)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div><div class="modal-body">${body}</div></div>`;
   requestAnimationFrame(()=>overlay.classList.add("open"));
 }
 
@@ -953,34 +991,40 @@ window.doCreate=async function(){
   const code=genCode();
   const memberId=genId();
   const tripData={name,code,members:[{id:memberId,name:myName}],expenses:[],rates:DEFAULT_RATES,createdAt:Date.now()};
-  await setDoc(doc(db,"trips",code),tripData);
-  const trips=getMyTrips();trips.push({code,name,myMemberId:memberId});saveMyTrips(trips);
-  enterTrip(code,memberId);
+  try{
+    await setDoc(doc(db,"trips",code),tripData);
+    const trips=getMyTrips();trips.push({code,name,myMemberId:memberId});saveMyTrips(trips);
+    enterTrip(code,memberId);
+  }catch(e){setState({error:e.message||"建立旅程失敗，請稍後再試"})}
 };
 
 window.doJoin=async function(){
   const code=$("joinCode")?.value?.trim()?.toUpperCase();
   const myName=$("joinName")?.value?.trim();
   if(!code||!myName){setState({error:"請填寫房間代碼和你的暱稱"});return}
-  const snap=await getDoc(doc(db,"trips",code));
-  if(!snap.exists()){setState({error:"找不到此旅程，請確認代碼是否正確"});return}
-  const data=snap.data();
-  const existing=data.members.find(m=>m.name===myName);
-  if(existing){
-    const trips=getMyTrips().filter(t=>t.code!==code);trips.push({code,name:data.name,myMemberId:existing.id});saveMyTrips(trips);
-    enterTrip(code,existing.id);return;
-  }
   const memberId=genId();
-  data.members.push({id:memberId,name:myName});
-  await setDoc(doc(db,"trips",code),data);
-  const trips=getMyTrips().filter(t=>t.code!==code);trips.push({code,name:data.name,myMemberId:memberId});saveMyTrips(trips);
-  enterTrip(code,memberId);
+  try{
+    const result=await runTransaction(db,async transaction=>{
+      const ref=doc(db,"trips",code);
+      const snap=await transaction.get(ref);
+      if(!snap.exists())throw new Error("找不到此旅程，請確認代碼是否正確");
+      const data=snap.data();
+      const existing=(data.members||[]).find(m=>m.name===myName);
+      if(existing)return{memberId:existing.id,tripName:data.name};
+      transaction.set(ref,{...data,members:[...(data.members||[]),{id:memberId,name:myName}]});
+      return{memberId,tripName:data.name};
+    });
+    const trips=getMyTrips().filter(t=>t.code!==code);trips.push({code,name:result.tripName,myMemberId:result.memberId});saveMyTrips(trips);
+    enterTrip(code,result.memberId);
+  }catch(e){setState({error:e.message||"加入旅程失敗，請稍後再試"})}
 };
 
 window.doRejoin=async function(code,memberId){
-  const snap=await getDoc(doc(db,"trips",code));
-  if(!snap.exists()){setState({error:"此旅程已不存在"});return}
-  enterTrip(code,memberId);
+  try{
+    const snap=await getDoc(doc(db,"trips",code));
+    if(!snap.exists()){setState({error:"此旅程已不存在"});return}
+    enterTrip(code,memberId);
+  }catch(e){setState({error:e.message||"載入旅程失敗，請稍後再試"})}
 };
 
 window.doDeleteTrip=function(code){
@@ -997,23 +1041,65 @@ window.doForceReload=function(){
 
 window.doLeave=function(){
   if(unsubscribe){unsubscribe();unsubscribe=null}
+  refreshRatesModalOnSnapshot=false;
   setState({screen:"landing",tripCode:null,tripData:null,landingMode:null,modal:null});
 };
 
 function enterTrip(code,memberId){
   if(unsubscribe){unsubscribe();unsubscribe=null}
+  refreshRatesModalOnSnapshot=false;
   STATE.tripCode=code;STATE.myMemberId=memberId;STATE.screen="trip";STATE.tab="expenses";STATE.modal=null;STATE.editExpense=null;
   unsubscribe=onSnapshot(doc(db,"trips",code),(snap)=>{
-    if(snap.exists())setState({tripData:snap.data()});
-  });
+    if(!snap.exists())return;
+    const td=snap.data();
+    setState({tripData:td});
+    if(refreshRatesModalOnSnapshot){
+      refreshRatesModalOnSnapshot=false;
+      if(STATE.modal==="rates")renderModal();
+    }
+    if((td.settlements||[]).some(s=>!s.id))migrateSettlementIds(code,td);
+  },()=>{if(STATE.tripCode===code)alert("連線中斷，部分資料可能不是最新")});
   render();
 }
 
-async function saveTripData(updater){
-  const td=STATE.tripData;
-  const next=typeof updater==="function"?updater(td):{...td,...updater};
-  STATE.tripData=next;
-  await setDoc(doc(db,"trips",STATE.tripCode),next);
+async function saveTripData(updater,tripCode=STATE.tripCode){
+  try{
+    await runTransaction(db,async transaction=>{
+      const ref=doc(db,"trips",tripCode);
+      const snap=await transaction.get(ref);
+      if(!snap.exists())throw new Error("旅程已不存在");
+      const td=snap.data();
+      const next=typeof updater==="function"?updater(td):{...td,...updater};
+      transaction.set(ref,next);
+    });
+    return true;
+  }catch(e){
+    alert(e.message||"儲存失敗，請重試");
+    return false;
+  }
+}
+
+async function migrateSettlementIds(tripCode,td){
+  if(migratingSettlementTrips.has(tripCode))return;
+  const ids=(td.settlements||[]).filter(s=>!s.id).map(()=>genId());
+  if(!ids.length)return;
+  migratingSettlementTrips.add(tripCode);
+  let saved=false;
+  try{
+    saved=await saveTripData(latest=>{
+      let i=0;
+      const settlements=(latest.settlements||[]).map(s=>{
+        if(s.id||!ids[i])return s;
+        return{...s,id:ids[i++]};
+      });
+      return{...latest,settlements};
+    },tripCode);
+  }finally{
+    migratingSettlementTrips.delete(tripCode);
+  }
+  if(saved&&STATE.tripCode===tripCode&&(STATE.tripData?.settlements||[]).some(s=>!s.id)){
+    migrateSettlementIds(tripCode,STATE.tripData);
+  }
 }
 
 window.setTab=function(t){setState({tab:t})};
@@ -1026,12 +1112,12 @@ window.closeModal=function(){
     overlay.classList.remove("open");
     setTimeout(()=>{if(overlay.parentNode)overlay.innerHTML=""},200);
   }
-  // Re-render trip view immediately so optimistic updates show without waiting for Firestore round-trip
+  // Firestore data itself is refreshed only by onSnapshot; this just closes the UI.
   render();
 };
 
 window.doShowCatDetail=function(category,memberId){
-  STATE.catDetail={category,memberId:memberId==="null"?null:memberId};
+  STATE.catDetail={category,memberId:memberId||null};
   openModal("catDetail");
 };
 
@@ -1044,13 +1130,19 @@ window.doFromCatDetailEdit=function(id){
 };
 
 window.doMarkSettled=async function(from,to,amount){
-  await saveTripData(td=>({...td,settlements:[...(td.settlements||[]),{from,to,amount,date:Date.now()}]}));
-  render();
+  const id=genId(),date=Date.now();
+  await saveTripData(td=>{
+    assertMembersExist(td,[from,to]);
+    const current=calcSettlement(td.members||[],td.expenses||[],td.rates||DEFAULT_RATES,td.settlements||[]);
+    const match=current.find(tx=>tx.from===from&&tx.to===to&&Math.abs(tx.amount-amount)<=0.01);
+    if(!match)throw new Error("帳務已變動，請重新整理後再結算");
+    return{...td,settlements:[...(td.settlements||[]),{id,from,to,amount:match.amount,date}]};
+  });
 };
 
-window.doUnmarkSettled=async function(idx){
-  await saveTripData(td=>({...td,settlements:(td.settlements||[]).filter((_,i)=>i!==idx)}));
-  render();
+window.doUnmarkSettled=async function(id){
+  if(!id)return;
+  await saveTripData(td=>({...td,settlements:(td.settlements||[]).filter(s=>s.id!==id)}));
 };
 
 window.doCopy=function(){
@@ -1062,36 +1154,41 @@ window.doCopy=function(){
 window.doAddMember=async function(){
   const name=$("newMemberName")?.value?.trim();
   if(!name)return;
-  await saveTripData(td=>({...td,members:[...td.members,{id:genId(),name}]}));
+  const id=genId();
+  if(!(await saveTripData(td=>({...td,members:[...td.members,{id,name}]}))))return;
   closeModal();
 };
 
-window.doRemoveMember=async function(id,name){
-  if(!confirm(`確定移除 ${name}？相關消費紀錄也會一併刪除`))return;
-  await saveTripData(td=>({
-    ...td,
-    members:td.members.filter(m=>m.id!==id),
-    expenses:td.expenses.map(e=>({...e,splits:e.splits.filter(s=>s.memberId!==id),payments:(e.payments||[]).filter(p=>p.memberId!==id)})).filter(e=>e.paidBy!==id&&!(e.payments&&e.payments.length===0)),
-  }));
+window.doRemoveMember=async function(id){
+  const member=(STATE.tripData?.members||[]).find(m=>m.id===id);
+  try{assertCanRemoveMember(STATE.tripData,id)}catch(e){alert(e.message);return}
+  if(!confirm(`確定移除 ${member?.name||"此旅伴"}？其多人分攤紀錄會改由其餘旅伴分擔`))return;
+  await saveTripData(td=>{
+    assertCanRemoveMember(td,id);
+    return{
+      ...td,
+      members:td.members.filter(m=>m.id!==id),
+      expenses:(td.expenses||[]).map(e=>({...e,splits:(e.splits||[]).filter(s=>s.memberId!==id)})),
+    };
+  });
 };
 
 window.doToggleAllowedCurrency=async function(code){
   if(code==="TWD")return;
-  const td=STATE.tripData;
-  const cur=getAllowedCurrencies(td);
-  const has=cur.includes(code);
-  let next=has?cur.filter(c=>c!==code):[...cur,code];
-  // Don't allow removing a currency that's already used in expenses
-  if(has&&td.expenses?.some(e=>e.currency===code)){
-    alert(`已有消費使用 ${code}，無法停用`);
-    return;
-  }
-  await saveTripData(t=>({...t,allowedCurrencies:next}));
-  renderModal();
+  refreshRatesModalOnSnapshot=true;
+  const saved=await saveTripData(td=>{
+    const current=getAllowedCurrencies(td);
+    const has=current.includes(code);
+    if(has&&(td.expenses||[]).some(e=>e.currency===code))throw new Error(`已有消費使用 ${code}，無法停用`);
+    const allowedCurrencies=has?current.filter(c=>c!==code):[...current,code];
+    return{...td,allowedCurrencies};
+  });
+  if(!saved)refreshRatesModalOnSnapshot=false;
 };
 
 window.doUpdateRate=async function(code,val){
-  const v=parseFloat(val)||0;
+  const v=parseFloat(val);
+  if(!Number.isFinite(v)||v<=0){alert("匯率必須是大於 0 的有效數字");renderModal();return}
   await saveTripData(td=>({...td,rates:{...td.rates,[code]:v}}));
 };
 
@@ -1105,21 +1202,18 @@ window.doFetchRates=async function(){
     const data=await res.json();
     if(data.result!=="success")throw new Error("API error");
     const apiRates=data.rates;
-    const newRates={...STATE.tripData.rates};
+    const fetchedRates={};
     CURRENCIES.filter(c=>c.code!=="TWD").forEach(c=>{
       if(apiRates[c.code]&&apiRates[c.code]>0){
         // apiRates[code] = how many of that currency per 1 TWD → invert to get TWD per 1 unit
-        newRates[c.code]=Math.round((1/apiRates[c.code])*10000)/10000;
+        fetchedRates[c.code]=Math.round((1/apiRates[c.code])*10000)/10000;
       }
     });
     const now=Date.now();
-    await saveTripData(td=>({...td,rates:newRates,ratesUpdatedAt:now}));
-    // Update input fields in modal
-    CURRENCIES.filter(c=>c.code!=="TWD").forEach(c=>{
-      const el=document.getElementById(`rate-${c.code}`);
-      if(el)el.value=newRates[c.code]||0;
-    });
-    if(status)status.innerHTML=`<span style="color:var(--c-green)">✓ 已同步最新匯率（${new Date(now).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}）</span>`;
+    refreshRatesModalOnSnapshot=true;
+    const saved=await saveTripData(td=>({...td,rates:{...td.rates,...fetchedRates},ratesUpdatedAt:now}));
+    if(!saved)refreshRatesModalOnSnapshot=false;
+    if(saved&&status)status.innerHTML=`<span style="color:var(--c-green)">✓ 已同步最新匯率</span>`;
   }catch(e){
     if(status)status.innerHTML=`<span style="color:var(--c-danger)">同步失敗，請稍後再試</span>`;
   }
@@ -1194,6 +1288,8 @@ window.setExpField=function(field,val){
     document.querySelectorAll("#expenseCatArea .pill").forEach(el=>{
       el.classList.toggle("active",el.dataset.cat===val);
     });
+    const label=document.getElementById("payerLabel");
+    if(label)label.textContent=val==="refund"?"誰收到的？":"誰付的？";
   }
 };
 
@@ -1236,7 +1332,7 @@ window.setPayMode=function(mode){
     let h=`<p style="font-size:12px;color:var(--c-sub);margin-bottom:8px">輸入每位旅伴的付款金額（沒付的留 0）</p>`;
     members.forEach(m=>{
       const color=getColor(m.name);
-      h+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${defaults[m.id]}" data-payment="${m.id}" inputmode="decimal" placeholder="0" oninput="updatePaidSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symbol}</span></div>`;
+      h+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${esc(String(m.name||"?")[0])}</span>${esc(m.name)}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${esc(defaults[m.id])}" data-payment="${esc(m.id)}" inputmode="decimal" placeholder="0" oninput="updatePaidSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symbol}</span></div>`;
     });
     h+=`<div id="paidSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div>`;
     multi.innerHTML=h;
@@ -1274,7 +1370,7 @@ window.setSplitMode=function(mode){
     let h=`<p style="font-size:12px;color:var(--c-sub);margin-bottom:8px">直接輸入每個人應分擔的金額</p>`;
     members.forEach(m=>{
       const color=getColor(m.name);
-      h+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${m.name[0]}</span>${m.name}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${evenSplit}" data-ratio="${m.id}" inputmode="decimal" placeholder="0" oninput="updateCustomSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symbol}</span></div>`;
+      h+=`<div class="flex gap-8 mb-12" style="align-items:center"><div class="badge" style="--badge-color:${color}"><span class="badge-avatar" style="background:${color}">${esc(String(m.name||"?")[0])}</span>${esc(m.name)}</div><input type="number" class="input" style="flex:1;max-width:120px" value="${evenSplit}" data-ratio="${esc(m.id)}" inputmode="decimal" placeholder="0" oninput="updateCustomSum()"><span style="font-size:12px;color:var(--c-sub)" data-cur-symbol>${symbol}</span></div>`;
     });
     h+=`<div id="customSum" style="font-size:12px;color:var(--c-sub);text-align:right;margin-top:4px"></div>`;
     cr.innerHTML=h;
@@ -1304,8 +1400,24 @@ window.updateCustomSum=function(){
   }
 };
 
-// Handle badge clicks in modal (paidby, split members)
+// Handle delegated actions and badge clicks without placing dynamic values in JS attributes.
 document.addEventListener("click",function(e){
+  const actionEl=e.target.closest("[data-action]");
+  if(actionEl){
+    const action=actionEl.dataset.action;
+    if(action==="rejoin")window.doRejoin(actionEl.dataset.code,actionEl.dataset.memberId);
+    else if(action==="delete-trip")window.doDeleteTrip(actionEl.dataset.code);
+    else if(action==="edit-expense")window.doEditExpense(actionEl.dataset.id);
+    else if(action==="remove-member")window.doRemoveMember(actionEl.dataset.id);
+    else if(action==="show-cat-detail")window.doShowCatDetail(actionEl.dataset.category,actionEl.dataset.memberId||null);
+    else if(action==="edit-cat-expense")window.doFromCatDetailEdit(actionEl.dataset.id);
+    else if(action==="mark-settled")window.doMarkSettled(actionEl.dataset.from,actionEl.dataset.to,Number(actionEl.dataset.amount));
+    else if(action==="unmark-settled"&&!actionEl.disabled)window.doUnmarkSettled(actionEl.dataset.id);
+    else if(action==="set-pay-account")window.setPayAcctType(actionEl.dataset.value||"");
+    else if(action==="toggle-currency")window.doToggleAllowedCurrency(actionEl.dataset.code);
+    else if(action==="set-category")window.setExpField("category",actionEl.dataset.value);
+    return;
+  }
   const el=e.target.closest("[data-click]");
   if(!el)return;
   const click=el.dataset.click;
@@ -1329,6 +1441,11 @@ document.addEventListener("click",function(e){
     STATE.loanForm.borrower=click.slice(13);
     document.querySelectorAll("#loanBorrowerArea [data-click]").forEach(b=>{b.classList.toggle("selected",b===el)});
   }
+});
+
+document.addEventListener("change",function(e){
+  const el=e.target.closest('[data-change="update-rate"]');
+  if(el)window.doUpdateRate(el.dataset.code,el.value);
 });
 
 window.toggleLoanCustomRate=function(useCustom){
@@ -1357,19 +1474,26 @@ window.doSaveLoan=async function(){
   const note=document.getElementById("loanNote")?.value?.trim()||"";
   if(!lf.lender||!lf.borrower){alert("請選擇出借人和借款人");return}
   if(lf.lender===lf.borrower){alert("出借人和借款人不能是同一人");return}
-  if(!amount||amount<=0){alert("請填寫金額");return}
-  const customRateVal=lf.useCustomRate&&currency!=="TWD"?parseFloat(document.getElementById("loanCustomRate")?.value)||null:null;
+  if(!Number.isFinite(amount)||amount<=0){alert("借款金額必須是大於 0 的有效數字");return}
+  let customRateVal=null;
+  if(lf.useCustomRate&&currency!=="TWD"){
+    customRateVal=parseFloat(document.getElementById("loanCustomRate")?.value);
+    if(!Number.isFinite(customRateVal)||customRateVal<=0){alert("自訂匯率必須是大於 0 的有效數字");return}
+  }
   const exp={
     description:desc,amount,currency,category:"loan",
     paidBy:lf.lender,payments:[{memberId:lf.lender,amount}],
     splits:[{memberId:lf.borrower,ratio:1}],
     date,note,customRate:customRateVal,
   };
-  if(STATE.editExpense){
-    await saveTripData(td=>({...td,expenses:td.expenses.map(e=>e.id===STATE.editExpense.id?{...exp,id:e.id}:e)}));
-  }else{
-    await saveTripData(td=>({...td,expenses:[...td.expenses,{...exp,id:genId()}]}));
-  }
+  const editId=STATE.editExpense?.id||null;
+  const id=editId||genId();
+  const record={...exp,id};
+  if(!(await saveTripData(td=>{
+    assertExpenseWrite(td,record,editId);
+    const expenses=editId?td.expenses.map(e=>e.id===editId?record:e):[...td.expenses,record];
+    return{...td,expenses};
+  })))return;
   closeModal();
 };
 
@@ -1378,7 +1502,7 @@ window.doSaveExpense=async function(){
   const amount=parseFloat($("expAmount")?.value);
   const currency=$("expCurrency")?.value||"TWD";
   const date=$("expDate")?.value||today();
-  if(!amount){alert("請填寫金額");return}
+  if(!Number.isFinite(amount)||amount<=0){alert("消費金額必須是大於 0 的有效數字");return}
   const splitMembers=STATE.tripData.members.filter(m=>expState.splitMembers[m.id]);
   if(!splitMembers.length){alert("請選擇至少一位分帳成員");return}
 
@@ -1398,32 +1522,37 @@ window.doSaveExpense=async function(){
     payments=[{memberId:expState.paidBy,amount}];
   }
 
-  const ratioInputs=document.querySelectorAll("[data-ratio]");
   const ratios={};
-  ratioInputs.forEach(el=>{ratios[el.dataset.ratio]=parseFloat(el.value)||0});
-
-  if(expState.splitMode==="custom"){
-    const sumSplit=splitMembers.reduce((s,m)=>s+(ratios[m.id]||0),0);
-    if(Math.abs(sumSplit-amount)>0.01){alert(`分攤金額合計 ${sumSplit} 不等於消費金額 ${amount}`);return}
-  }
+  document.querySelectorAll("[data-ratio]").forEach(el=>{ratios[el.dataset.ratio]=el.value.trim()===""?0:Number(el.value)});
 
   const splits=splitMembers.map(m=>({
     memberId:m.id,
-    ratio:expState.splitMode==="custom"?(ratios[m.id]||expState.customRatios[m.id]||1):1,
+    ratio:expState.splitMode==="custom"?(ratios[m.id]??expState.customRatios[m.id]??1):1,
   }));
 
-  const customRateVal=expState.useCustomRate&&currency!=="TWD"?parseFloat($("expCustomRate")?.value)||null:null;
-  const note=$("expNote")?.value?.trim()||"";
-  const exp={description:desc,amount,currency,category:expState.category,paidBy:payments[0].memberId,payments,splits,date,note,...(customRateVal?{customRate:customRateVal}:{customRate:null})};
-
-  let savedId;
-  if(STATE.editExpense){
-    savedId=STATE.editExpense.id;
-    await saveTripData(td=>({...td,expenses:td.expenses.map(e=>e.id===savedId?{...exp,id:e.id}:e)}));
-  }else{
-    savedId=genId();
-    await saveTripData(td=>({...td,expenses:[...td.expenses,{...exp,id:savedId}]}));
+  if(expState.splitMode==="custom"){
+    if(splits.some(s=>!Number.isFinite(s.ratio)||s.ratio<0)){alert("自訂分攤金額必須是有效的非負數");return}
+    const sumSplit=splits.reduce((sum,s)=>sum+s.ratio,0);
+    if(!splits.some(s=>s.ratio>0)){alert("自訂分攤至少要有一人大於 0");return}
+    if(Math.abs(sumSplit-amount)>0.01){alert(`分攤金額合計 ${sumSplit} 不等於消費金額 ${amount}`);return}
   }
+
+  let customRateVal=null;
+  if(expState.useCustomRate&&currency!=="TWD"){
+    customRateVal=parseFloat($("expCustomRate")?.value);
+    if(!Number.isFinite(customRateVal)||customRateVal<=0){alert("自訂匯率必須是大於 0 的有效數字");return}
+  }
+  const note=$("expNote")?.value?.trim()||"";
+  const exp={description:desc,amount,currency,category:expState.category,paidBy:payments[0].memberId,payments,splits,date,note,customRate:customRateVal};
+
+  const editId=STATE.editExpense?.id||null;
+  const savedId=editId||genId();
+  const record={...exp,id:savedId};
+  if(!(await saveTripData(td=>{
+    assertExpenseWrite(td,record,editId);
+    const expenses=editId?td.expenses.map(e=>e.id===editId?record:e):[...td.expenses,record];
+    return{...td,expenses};
+  })))return;
 
   // Save personal pay account annotation (only if I'm a payer)
   const iAmPayer=payments.some(p=>p.memberId===STATE.myMemberId);
@@ -1443,9 +1572,9 @@ window.doSaveExpense=async function(){
 window.doDeleteExpense=async function(){
   if(!confirm("確定刪除這筆？"))return;
   const id=STATE.editExpense.id;
+  if(!(await saveTripData(td=>({...td,expenses:td.expenses.filter(e=>e.id!==id)}))))return;
   // Clean up any local pay-account annotations for this expense (only mine; others' will be orphaned but harmless)
   setPayAccount(STATE.tripCode,STATE.myMemberId,id,null);
-  await saveTripData(td=>({...td,expenses:td.expenses.filter(e=>e.id!==id)}));
   closeModal();
 };
 
@@ -1456,11 +1585,12 @@ function parseExpenseLines(text,members){
     if(parts.length<8)return{ok:false,line,error:'欄位不足（需 8 欄）'};
     const [,desc,amtStr,currency,category,date,paidByName,splitsStr]=parts;
     const amount=parseFloat(amtStr);
-    if(!amount||amount<=0)return{ok:false,line,error:'金額無效'};
+    if(!Number.isFinite(amount)||amount<=0)return{ok:false,line,error:'金額無效'};
     const cur=currency.trim().toUpperCase();
     if(!CURRENCIES.find(c=>c.code===cur))return{ok:false,line,error:`不支援幣別：${cur}`};
     const cat=category.trim().toLowerCase();
     if(!CATEGORIES.find(c=>c.id===cat))return{ok:false,line,error:`不支援類別：${cat}`};
+    if(cat==="loan")return{ok:false,line,error:'借款請使用專用的「借款」功能新增'};
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date.trim()))return{ok:false,line,error:'日期格式錯誤（需 YYYY-MM-DD）'};
     const paidByRaw=paidByName.trim();
     let payments=[];
@@ -1471,7 +1601,7 @@ function parseExpenseLines(text,members){
         if(eq===-1)return{ok:false,line,error:`paid 格式錯誤：${pair}`};
         const n=pair.slice(0,eq).trim();
         const a=parseFloat(pair.slice(eq+1));
-        if(!a||a<=0)return{ok:false,line,error:`付款金額無效：${pair}`};
+        if(!Number.isFinite(a)||a<=0)return{ok:false,line,error:`付款金額無效：${pair}`};
         const m=members.find(m=>m.name.trim().toLowerCase()===n.toLowerCase());
         if(!m)return{ok:false,line,error:`找不到成員：${n}`};
         payments.push({memberId:m.id,amount:a});
@@ -1500,7 +1630,7 @@ function parseExpenseLines(text,members){
         if(eq===-1)return{ok:false,line,error:`custom 格式錯誤：${pair}`};
         const n=pair.slice(0,eq).trim();
         const ratio=parseFloat(pair.slice(eq+1));
-        if(!ratio||ratio<=0)return{ok:false,line,error:`金額無效：${pair}`};
+        if(!Number.isFinite(ratio)||ratio<=0)return{ok:false,line,error:`金額無效：${pair}`};
         const m=members.find(m=>m.name.trim().toLowerCase()===n.toLowerCase());
         if(!m)return{ok:false,line,error:`找不到成員：${n}`};
         splits.push({memberId:m.id,ratio});
@@ -1533,22 +1663,22 @@ window.renderPastePreview=function(){
       const cat=CATEGORIES.find(c=>c.id===r.exp.category)||CATEGORIES[5];
       const cur=CURRENCIES.find(c=>c.code===r.exp.currency)||CURRENCIES[0];
       const payerNames=(r.exp.payments||[{memberId:r.exp.paidBy}]).map(p=>(members.find(m=>m.id===p.memberId)||{name:'?'}).name).join('、');
-      html+=`<div class="paste-row paste-ok"><span class="paste-icon">✓</span><span>${cat.icon} ${r.exp.description} · ${cur.symbol}${r.exp.amount.toLocaleString()} · ${payerNames} 代付 · ${r.exp.date}</span></div>`;
+      html+=`<div class="paste-row paste-ok"><span class="paste-icon">✓</span><span>${cat.icon} ${esc(r.exp.description)} · ${cur.symbol}${fmtMoney(r.exp.amount)} · ${esc(payerNames)} ${r.exp.category==="refund"?"收到":"代付"} · ${esc(r.exp.date)}</span></div>`;
     }else{
-      html+=`<div class="paste-row paste-err"><span class="paste-icon">✕</span><span>${r.error}<br><span style="opacity:.6;font-size:11px">${r.line.slice(0,60)}${r.line.length>60?'...':''}</span></span></div>`;
+      html+=`<div class="paste-row paste-err"><span class="paste-icon">✕</span><span>${esc(r.error)}<br><span style="opacity:.6;font-size:11px">${esc(r.line.slice(0,60))}${r.line.length>60?'...':''}</span></span></div>`;
     }
   });
   if(preview)preview.innerHTML=html;
   if(btn){
-    if(okCount>0){btn.disabled=false;btn.textContent=`確認新增 ${okCount} 筆${results.length>okCount?`（跳過 ${results.length-okCount} 筆錯誤）`:''}`;}
-    else{btn.disabled=true;btn.textContent='沒有可匯入的資料';}
+    if(okCount===results.length){btn.disabled=false;btn.textContent=`確認新增 ${okCount} 筆`;}
+    else{btn.disabled=true;btn.textContent=okCount?`請先修正 ${results.length-okCount} 筆錯誤`:'沒有可匯入的資料';}
   }
 };
 
-window.doCopyTemplate=function(){
+window.doCopyTemplate=function(ev){
   const tmpl=window._pasteTemplate||'';
   navigator.clipboard?.writeText(tmpl).then(()=>{
-    const btn=event.target;
+    const btn=ev.currentTarget;
     btn.textContent='✓ 已複製！貼給 AI 後把結果貼回下方';
     btn.style.color='var(--c-green)';
     setTimeout(()=>{btn.textContent='📄 複製 AI 提示範本';btn.style.color='';},3000);
@@ -1559,9 +1689,13 @@ window.doConfirmPaste=async function(){
   const text=document.getElementById('pasteInput')?.value||'';
   const members=STATE.tripData?.members||[];
   const results=parseExpenseLines(text,members);
+  if(results.some(r=>!r.ok)){alert('批次資料含錯誤，請全部修正後再匯入');return}
   const toAdd=results.filter(r=>r.ok).map(r=>r.exp);
   if(!toAdd.length)return;
-  await saveTripData(td=>({...td,expenses:[...td.expenses,...toAdd]}));
+  if(!(await saveTripData(td=>{
+    toAdd.forEach(exp=>assertExpenseWrite(td,exp));
+    return{...td,expenses:[...td.expenses,...toAdd]};
+  })))return;
   closeModal();
   setState({tab:'expenses'});
   alert(`✓ 已新增 ${toAdd.length} 筆消費`);
