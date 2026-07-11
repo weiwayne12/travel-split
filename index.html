@@ -7,38 +7,33 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#e8735a">
 <title>WEIBEAR</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23e8735a'/><text x='50' y='76' font-size='74' font-family='Arial Black,sans-serif' font-weight='900' fill='white' text-anchor='middle'>W</text></svg>">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;900&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23e8735a' stroke='%232d2a26' stroke-width='6'/><text x='50' y='76' font-size='74' font-family='Arial Black,sans-serif' font-weight='900' fill='white' text-anchor='middle'>W</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-:root{--c-primary:#e8735a;--c-gold:#d4a843;--c-green:#6dbf67;--c-bg:#faf7f2;--c-card:#fff;--c-border:#e0dbd4;--c-text:#2d2a26;--c-sub:#999;--c-light:#f5f0ea;--c-danger:#d44;--font:'Noto Sans TC',sans-serif;--font-display:'Caveat','Noto Sans TC',cursive}
-body{font-family:var(--font);background:linear-gradient(170deg,var(--c-bg) 0%,#f3ede3 100%);color:var(--c-text);min-height:100vh;min-height:100dvh;overflow-x:hidden}
+:root{--c-primary:#e8735a;--c-gold:#d4a843;--c-green:#6dbf67;--c-bg:#faf7f2;--c-card:#fff;--c-ink:#2d2a26;--c-text:#2d2a26;--c-sub:#7a736a;--c-light:#f5f0ea;--c-danger:#d44;--font:'Noto Sans TC',sans-serif}
+body{font-family:var(--font);background:var(--c-bg);color:var(--c-text);min-height:100vh;min-height:100dvh;overflow-x:hidden}
 input,select,button{font-family:var(--font);outline:none}
 .app{max-width:520px;margin:0 auto;padding-bottom:100px}
 
 /* Header */
-.header{background:linear-gradient(135deg,var(--c-primary) 0%,var(--c-gold) 100%);padding:calc(env(safe-area-inset-top,20px) + 16px) 20px 20px;border-radius:0 0 28px 28px;box-shadow:0 8px 32px rgba(232,115,90,0.25)}
-.header h1{font-family:var(--font-display);font-size:24px;font-weight:900;color:#fff}
+.header{background:var(--c-primary);padding:calc(env(safe-area-inset-top,20px) + 16px) 20px 20px;border-bottom:3px solid var(--c-ink)}
+.header h1{font-family:var(--font);font-size:24px;font-weight:900;letter-spacing:.02em;color:#fff}
 .header .sub{font-size:12px;color:rgba(255,255,255,0.75);margin-top:4px}
 .header-row{display:flex;justify-content:space-between;align-items:flex-start}
 .header-actions{display:flex;gap:6px;flex-shrink:0}
-.header-btn{background:rgba(255,255,255,0.2);border:none;border-radius:10px;padding:6px 10px;color:#fff;font-size:13px;cursor:pointer;font-weight:500}
-.total-bar{margin-top:14px;background:rgba(255,255,255,0.2);border-radius:14px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
-.total-bar .label{color:rgba(255,255,255,0.85);font-size:13px}
-.total-bar .amount{color:#fff;font-size:22px;font-weight:700}
+.header-btn{background:var(--c-bg);border:2.5px solid var(--c-ink);border-radius:6px;padding:6px 10px;color:var(--c-ink);font-size:13px;cursor:pointer;font-weight:800;box-shadow:2px 2px 0 var(--c-ink)}
+.total-bar{margin-top:14px;background:#fff;border:3px solid var(--c-ink);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;box-shadow:4px 4px 0 var(--c-ink)}
+.total-bar .label{color:var(--c-ink);font-size:13px}.total-bar .amount{color:var(--c-ink);font-size:22px;font-weight:700}
 
 /* Tabs */
-.tabs{display:flex;margin:14px 16px 0;background:var(--c-card);border-radius:14px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05)}
-.tab-btn{flex:1;padding:10px 2px;border:none;border-radius:11px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--c-sub);transition:all 0.2s;white-space:nowrap}
-.tab-btn.active{background:var(--c-primary);color:#fff}
+.tabs{display:flex;margin:14px 16px 0;gap:8px}.tab-btn{flex:1;padding:10px 2px;border:3px solid var(--c-ink);border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;background:#fff;color:var(--c-ink);transition:all .2s;white-space:nowrap}.tab-btn.active{background:var(--c-primary);color:#fff;box-shadow:3px 3px 0 var(--c-ink)}
 
 /* Content */
 .content{padding:12px 16px}
 
 /* Cards */
-.card{background:var(--c-card);border-radius:16px;padding:14px 16px;margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,0.04);cursor:pointer;display:flex;align-items:center;gap:12px;transition:transform 0.1s}
-.card:active{transform:scale(0.98)}
-.card-icon{font-size:28px;flex-shrink:0}
+.card{background:var(--c-card);border:3px solid var(--c-ink);border-radius:10px;padding:14px 16px;margin-bottom:12px;box-shadow:4px 4px 0 var(--c-ink);cursor:pointer;display:flex;align-items:center;gap:12px;transition:transform .1s}.card:active,.trip-item:active,.btn-primary:active,.btn-secondary:active,.btn-outline:active,.paste-btn:active,.header-btn:active,.tab-btn:active,.pill:active,.badge:active,.modal-close:active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--c-ink)}
 .card-body{flex:1;min-width:0}
 .card-title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card-sub{font-size:12px;color:var(--c-sub);margin-top:2px}
@@ -47,50 +42,39 @@ input,select,button{font-family:var(--font);outline:none}
 .card-amount .convert{font-size:11px;color:#bbb}
 
 /* Buttons */
-.btn-primary{padding:14px;border-radius:14px;border:none;font-size:16px;font-weight:700;cursor:pointer;background:var(--c-primary);color:#fff;width:100%;box-shadow:0 4px 16px rgba(232,115,90,0.3);transition:all 0.15s}
-.btn-primary:active{transform:scale(0.97)}
-.btn-secondary{padding:10px 24px;border-radius:12px;border:none;font-size:15px;font-weight:600;cursor:pointer;background:var(--c-light);color:var(--c-text)}
-.btn-danger{background:transparent;border:none;color:var(--c-danger);font-size:14px;font-weight:600;cursor:pointer;padding:12px;width:100%}
+.btn-primary{padding:14px;border-radius:10px;border:3px solid var(--c-ink);font-size:16px;font-weight:900;cursor:pointer;background:var(--c-primary);color:#fff;width:100%;box-shadow:4px 4px 0 var(--c-ink);transition:all .15s}.btn-secondary,.btn-outline,.paste-btn{border:3px solid var(--c-ink);border-radius:10px;font-weight:800;background:#fff;color:var(--c-ink);box-shadow:3px 3px 0 var(--c-ink)}.btn-secondary{padding:10px 24px;font-size:15px;cursor:pointer}.btn-danger{background:#fff;border:2.5px solid var(--c-danger);border-radius:10px;color:var(--c-danger);font-size:14px;font-weight:800;cursor:pointer;padding:12px;width:100%;box-shadow:3px 3px 0 var(--c-danger)}
 
 /* Inputs */
-.input{width:100%;padding:10px 14px;border-radius:12px;border:1.5px solid var(--c-border);font-size:15px;background:var(--c-bg);transition:border-color 0.2s}
-.input:focus{border-color:var(--c-primary)}
+.input,.paste-textarea{width:100%;padding:10px 14px;border-radius:8px;border:2.5px solid var(--c-ink);font-size:15px;background:#fff;transition:border-color .2s}.input:focus,.paste-textarea:focus{border-color:var(--c-primary);box-shadow:3px 3px 0 var(--c-primary)}
 .input-big{text-align:center;letter-spacing:6px;font-size:22px;font-family:monospace;font-weight:700}
 .label{font-size:13px;font-weight:600;color:#888;margin-bottom:6px;display:block}
 
 /* Badges */
-.badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:22px;font-size:14px;font-weight:500;background:var(--c-light);border:2px solid transparent;cursor:pointer;transition:all 0.15s;user-select:none;min-height:40px;touch-action:manipulation}
-.badge.selected{border-color:var(--badge-color);background:color-mix(in srgb,var(--badge-color) 12%,white)}
-.badge-avatar{width:24px;height:24px;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-size:14px;font-weight:700;background:var(--c-light);border:2.5px solid var(--c-ink);cursor:pointer;transition:all .15s;user-select:none;min-height:40px;touch-action:manipulation}.badge.selected{border-color:var(--c-ink);background:color-mix(in srgb,var(--badge-color) 12%,white);box-shadow:2px 2px 0 var(--c-ink)}.badge-avatar{width:24px;height:24px;border:2px solid var(--c-ink);border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
 .badge-lg{padding:4px 12px;font-size:14px;gap:6px;min-height:36px}
 .badge-lg .badge-avatar{width:26px;height:26px;font-size:13px}
 
 /* Modal */
-.modal-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity 0.2s}
+.modal-overlay{position:fixed;inset:0;z-index:1000;background:rgba(45,42,38,.55);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s}
 .modal-overlay.open{opacity:1;pointer-events:auto}
-.modal{background:#fff;border-radius:20px;width:100%;max-width:440px;max-height:85vh;overflow:auto;box-shadow:0 24px 80px rgba(0,0,0,0.18);transform:translateY(20px);transition:transform 0.2s}
+.modal{background:var(--c-bg);border:3.5px solid var(--c-ink);border-radius:12px;width:100%;max-width:440px;max-height:85vh;overflow:auto;box-shadow:7px 7px 0 var(--c-ink);transform:translateY(20px);transition:transform .2s}
 .modal-overlay.open .modal{transform:translateY(0)}
-.modal-header{padding:20px 24px 12px;border-bottom:1px solid var(--c-light);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;border-radius:20px 20px 0 0;z-index:1}
-.modal-header h3{font-size:18px;font-weight:700}
-.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--c-sub);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.modal-header{padding:20px 24px 12px;border-bottom:3px solid var(--c-ink);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--c-gold);border-radius:8px 8px 0 0;z-index:1}.modal-header h3{font-size:18px;font-weight:900}.modal-close{background:#fff;border:2.5px solid var(--c-ink);font-size:22px;cursor:pointer;color:var(--c-ink);width:36px;height:36px;border-radius:6px;box-shadow:2px 2px 0 var(--c-ink);display:flex;align-items:center;justify-content:center}
 .modal-body{padding:16px 24px 24px}
 
 /* Category pills */
-.pill{padding:10px 14px;border-radius:10px;border:none;font-size:14px;cursor:pointer;background:var(--c-light);color:#666;transition:all 0.15s;min-height:40px;touch-action:manipulation}
-.pill.active{background:var(--c-primary);color:#fff}
+.pill{padding:10px 14px;border-radius:7px;border:2.5px solid var(--c-ink);font-size:14px;font-weight:800;cursor:pointer;background:#fff;color:var(--c-ink);transition:all .15s;min-height:40px;touch-action:manipulation}.pill.active{background:var(--c-primary);color:#fff;box-shadow:2px 2px 0 var(--c-ink)}
 
 /* Settlement */
-.settle-card{background:var(--c-card);border-radius:16px;padding:20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+.settle-card{background:var(--c-card);border:3px solid var(--c-ink);border-radius:10px;padding:20px;margin-bottom:16px;box-shadow:4px 4px 0 var(--c-ink)}
 .settle-title{margin:0 0 12px;font-size:15px;color:var(--c-sub)}
 .settle-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--c-light)}
 .settle-row:last-child{border-bottom:none}
-.net-positive{color:var(--c-green);font-weight:700;font-size:15px}
-.net-negative{color:var(--c-primary);font-weight:700;font-size:15px}
-.net-zero{color:var(--c-sub);font-weight:700;font-size:15px}
+.net-positive{color:var(--c-green);font-weight:800;font-size:15px}.net-negative{color:var(--c-primary);font-weight:800;font-size:15px}.net-zero{color:var(--c-sub);font-weight:800;font-size:15px}
 .txn-row{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--c-light)}
 .txn-row:last-child{border-bottom:none}
 .txn-arrow{color:#ccc;font-size:18px}
-.txn-amount{margin-left:auto;font-weight:700;font-size:16px;color:var(--c-primary)}
+.txn-amount{margin-left:auto;font-weight:800;font-size:16px;color:var(--c-primary)}
 
 /* Empty states */
 .empty{text-align:center;padding:40px 20px;color:#bbb}
@@ -100,22 +84,17 @@ input,select,button{font-family:var(--font);outline:none}
 .landing{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:0 20px;max-width:520px;margin:0 auto}
 .landing-hero{text-align:center;padding-top:60px;margin-bottom:32px}
 .landing-hero .icon{font-size:56px;margin-bottom:8px}
-.landing-hero h1{font-family:var(--font-display);font-size:34px;font-weight:900;background:linear-gradient(135deg,var(--c-primary),var(--c-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.landing-hero p{color:var(--c-sub);font-size:14px;margin-top:4px}
-.landing-form{width:100%;display:flex;flex-direction:column;gap:14px}
-.trip-item{width:100%;padding:14px 16px;border-radius:14px;border:1.5px solid var(--c-border);background:#fff;display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:8px;transition:transform 0.1s}
-.trip-item:active{transform:scale(0.98)}
+.landing-hero h1{font-family:var(--font);font-size:34px;font-weight:900;letter-spacing:.06em;color:var(--c-ink)}.landing-hero p{display:inline-block;background:var(--c-gold);border:2.5px solid var(--c-ink);border-radius:6px;padding:4px 10px;font-weight:700;color:var(--c-ink);font-size:14px;margin-top:4px}.landing-form{width:100%;display:flex;flex-direction:column;gap:14px}.trip-item{width:100%;padding:14px 16px;border:3px solid var(--c-ink);border-radius:10px;background:#fff;display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:12px;box-shadow:3px 3px 0 var(--c-ink);transition:transform .1s}
 .trip-item .name{font-weight:600;font-size:15px}
-.trip-item .code{font-size:12px;color:#bbb;font-family:monospace}
-.error-msg{background:#fff0ee;color:var(--c-danger);padding:10px 16px;border-radius:12px;font-size:14px;text-align:center;width:100%}
+.trip-item .code{font-size:12px;color:var(--c-ink);font-family:monospace;border:2px solid var(--c-ink);border-radius:5px;background:var(--c-bg);padding:2px 7px;font-weight:700}.error-msg{background:#fff;border:3px solid var(--c-danger);box-shadow:4px 4px 0 var(--c-danger);color:var(--c-danger);font-weight:800;padding:10px 16px;border-radius:10px;font-size:14px;text-align:center;width:100%}
 .back-btn{background:none;border:none;color:var(--c-sub);cursor:pointer;font-size:14px;padding:8px}
-.btn-outline{padding:14px 24px;border-radius:14px;border:1.5px solid var(--c-border);font-size:16px;font-weight:700;cursor:pointer;background:#fff;color:var(--c-text);width:100%;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
+.btn-outline{padding:14px 24px;font-size:16px;cursor:pointer;width:100%}
 
 /* Share code display */
-.share-code{font-size:36px;font-family:monospace;font-weight:700;letter-spacing:8px;color:var(--c-primary);padding:16px 0;background:var(--c-bg);border-radius:14px;margin:12px 0;text-align:center}
+.share-code{font-size:36px;font-family:monospace;font-weight:700;letter-spacing:8px;color:var(--c-primary);padding:16px 0;background:#fff;border:3px solid var(--c-ink);box-shadow:4px 4px 0 var(--c-ink);border-radius:10px;margin:12px 0;text-align:center}
 
 /* Member card in list */
-.member-card{background:var(--c-card);border-radius:16px;padding:14px 16px;margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,0.04);display:flex;align-items:center;justify-content:space-between}
+.member-card{background:var(--c-card);border:3px solid var(--c-ink);border-radius:10px;padding:14px 16px;margin-bottom:12px;box-shadow:4px 4px 0 var(--c-ink);display:flex;align-items:center;justify-content:space-between}
 .member-info{display:flex;align-items:center;gap:8px}
 .member-stats{text-align:right;font-size:13px;color:#888}
 .remove-btn{background:none;border:none;font-size:18px;cursor:pointer;color:#ccc;padding:4px}
@@ -128,15 +107,12 @@ input,select,button{font-family:var(--font);outline:none}
 .flex{display:flex}.flex-wrap{flex-wrap:wrap}.gap-6{gap:6px}.gap-8{gap:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}
 
 /* Paste batch */
-.paste-btn{flex-shrink:0;padding:14px 16px;border-radius:14px;border:1.5px solid var(--c-border);background:#fff;color:var(--c-text);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
-.paste-textarea{width:100%;min-height:130px;padding:12px;border-radius:12px;border:1.5px solid var(--c-border);font-size:12px;font-family:monospace;background:var(--c-bg);resize:vertical;line-height:1.5}
-.paste-textarea:focus{border-color:var(--c-primary);outline:none}
+.paste-btn{flex-shrink:0;padding:14px 16px;font-size:14px;cursor:pointer;white-space:nowrap}.paste-textarea{min-height:130px;padding:12px;font-size:12px;font-family:monospace;resize:vertical;line-height:1.5}
 .paste-preview{margin-top:10px;max-height:180px;overflow-y:auto}
 .paste-row{font-size:13px;padding:6px 10px;border-radius:8px;margin-bottom:4px;display:flex;align-items:flex-start;gap:6px;line-height:1.4;word-break:break-all}
-.paste-ok{background:#f0fff4;color:#2d5a27}
-.paste-err{background:#fff0f0;color:#8b2020}
+.paste-ok{background:#f0fff4;color:#2d5a27;border:2px solid var(--c-green);border-radius:6px}.paste-err{background:#fff0f0;color:#8b2020;border:2px solid var(--c-danger);border-radius:6px}
 .paste-icon{flex-shrink:0;font-size:13px;margin-top:1px}
-.paste-hint{font-size:12px;color:var(--c-sub);line-height:1.6;background:var(--c-light);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.paste-hint{font-size:12px;color:var(--c-sub);line-height:1.6;background:#fff;border:2.5px dashed var(--c-ink);border-radius:8px;padding:10px 12px;margin-bottom:12px}.cat-chip{flex-shrink:0;font-size:11px;font-weight:900;border:2.5px solid var(--c-ink);border-radius:6px;padding:5px 7px;color:var(--c-ink)}
 .paste-hint code{background:rgba(0,0,0,0.06);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px}
 </style>
 </head>
@@ -190,6 +166,7 @@ const CATEGORIES = [
   {id:"refund",icon:"💸",name:"退稅/收入"},
   {id:"loan",icon:"🤝",name:"借款"},
 ];
+const CAT_COLORS={food:"#d4a843",transport:"#4ec6c1",hotel:"#e07db5",ticket:"#a87ed4",shopping:"#5b9bd5",other:"#f5f0ea",refund:"#6dbf67",loan:"#8a9a5b"};
 // Refund/income reverses the cash flow: "payer" received money, "splits" share the benefit.
 function expSign(exp){return exp.category==="refund"?-1:1}
 const PAY_ACCOUNTS = [
@@ -379,13 +356,13 @@ function renderLanding(){
   const {error}=STATE;
   const mode=STATE.landingMode||null;
 
-  let html=`<div class="landing"><div class="landing-hero"><div class="icon"><svg viewBox="0 0 100 100" width="56" height="56" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" rx="22" fill="#e8735a"/><text x="50" y="76" font-size="74" font-family="Arial Black,sans-serif" font-weight="900" fill="white" text-anchor="middle">W</text></svg></div><h1>WEIBEAR</h1><p>多人共享 · 即時同步 · 自動結算</p></div>`;
+  let html=`<div class="landing"><div class="landing-hero"><div class="icon"><svg viewBox="0 0 100 100" width="56" height="56" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" rx="22" fill="#e8735a" stroke="#2d2a26" stroke-width="6"/><text x="50" y="76" font-size="74" font-family="Arial Black,sans-serif" font-weight="900" fill="white" text-anchor="middle">W</text></svg></div><h1>WEIBEAR</h1><p>多人共享 · 即時同步 · 自動結算</p></div>`;
   if(error)html+=`<div class="error-msg mb-12">${esc(error)}</div>`;
 
   if(!mode){
     html+=`<div class="landing-form">
-      <button class="btn-primary" onclick="doSetMode('create')">🆕 建立新旅程</button>
-      <button class="btn-outline" onclick="doSetMode('join')">🔗 加入旅程</button>`;
+      <button class="btn-primary" onclick="doSetMode('create')">建立新旅程</button>
+      <button class="btn-outline" onclick="doSetMode('join')">加入旅程</button>`;
     if(myTrips.length){
       html+=`<div class="mt-16"><p style="font-size:13px;color:var(--c-sub);margin-bottom:8px;font-weight:600">最近的旅程</p>`;
       myTrips.forEach(t=>{
@@ -440,25 +417,25 @@ function renderTrip(){
         <div class="sub">${members.length} 位旅伴 · 我是 ${esc(myMember.name)}</div>
       </div>
       <div class="header-actions">
-        <button class="header-btn" onclick="openModal('share')">📤 邀請</button>
-        <button class="header-btn" onclick="openModal('rates')">💱</button>
-        <button class="header-btn" onclick="doForceReload()" title="強制更新到最新版">🔄</button>
+        <button class="header-btn" onclick="openModal('share')">邀請</button>
+        <button class="header-btn" onclick="openModal('rates')">匯率</button>
+        <button class="header-btn" onclick="doForceReload()" title="強制更新到最新版">更新</button>
       </div>
     </div>
     <div class="total-bar"><span class="label">總花費（${esc(baseCurrency)}）</span><span class="amount">${esc(symbol)} ${fmtMoney(toDisplay(totalTWD,baseCurrency,rates))}</span></div>
   </div>
 
   <div class="tabs">
-    <button class="tab-btn ${tab==="expenses"?"active":""}" onclick="setTab('expenses')">💰 消費</button>
-    <button class="tab-btn ${tab==="members"?"active":""}" onclick="setTab('members')">👥 旅伴</button>
-    <button class="tab-btn ${tab==="stats"?"active":""}" onclick="setTab('stats')">📊 統計</button>
-    <button class="tab-btn ${tab==="settle"?"active":""}" onclick="setTab('settle')">🤝 結算</button>
+    <button class="tab-btn ${tab==="expenses"?"active":""}" onclick="setTab('expenses')">消費</button>
+    <button class="tab-btn ${tab==="members"?"active":""}" onclick="setTab('members')">旅伴</button>
+    <button class="tab-btn ${tab==="stats"?"active":""}" onclick="setTab('stats')">統計</button>
+    <button class="tab-btn ${tab==="settle"?"active":""}" onclick="setTab('settle')">結算</button>
   </div>
 
   <div class="content">`;
 
   if(tab==="expenses"){
-    html+=`<div class="flex gap-8 mb-12"><button class="btn-primary" style="flex:1" onclick="doAddExpense()">+ 新增消費</button><button class="paste-btn" onclick="doAddLoan()">🤝 借款</button><button class="paste-btn" onclick="openModal('paste')">📋 批次</button></div>`;
+    html+=`<div class="flex gap-8 mb-12"><button class="btn-primary" style="flex:1" onclick="doAddExpense()">+ 新增消費</button><button class="paste-btn" onclick="doAddLoan()">借款</button><button class="paste-btn" onclick="openModal('paste')">批次</button></div>`;
     if(!expenses.length){
       html+=`<div class="empty"><div class="empty-icon">📝</div><p>還沒有消費紀錄</p></div>`;
     }
@@ -494,7 +471,7 @@ function renderTrip(){
       }
       const noteHTML=exp.note?`<div style="font-size:11px;color:var(--c-sub);margin-top:3px;font-style:italic">📝 ${esc(exp.note)}</div>`:"";
       html+=`<div class="card" data-action="edit-expense" data-id="${esc(exp.id)}">
-        <span class="card-icon">${cat.icon}</span>
+        <span class="cat-chip" style="background:${CAT_COLORS[cat.id]||'var(--c-light)'}">${esc(cat.name)}</span>
         <div class="card-body"><div class="card-title">${esc(exp.description||cat.name)}${rateTag}${payAcctTag}</div><div class="card-sub">${mainLine}</div>${noteHTML}</div>
         <div class="card-amount"><div class="main" style="${amtColor}">${amtPrefix}${cur.symbol}${fmtMoney(exp.amount)}</div>${convHTML}</div>
       </div>`;
@@ -524,7 +501,7 @@ function renderTrip(){
       const catEntries=Object.entries(byCat).filter(([,v])=>Math.abs(v)>0.01).sort((a,b)=>b[1]-a[1]);
       const totalAbs=catEntries.reduce((s,[,v])=>s+Math.abs(v),0)||1;
       // Overall category breakdown
-      html+=`<div class="settle-card"><h4 class="settle-title">🏷️ 團體類別總覽</h4>`;
+      html+=`<div class="settle-card"><h4 class="settle-title">團體類別總覽</h4>`;
       if(!catEntries.length){
         html+=`<p style="color:#bbb;text-align:center;padding:12px">尚無資料</p>`;
       }else{
@@ -535,10 +512,10 @@ function renderTrip(){
           const barColor=isNeg?"var(--c-green)":"var(--c-primary)";
           html+=`<div style="padding:8px 0;border-bottom:1px solid var(--c-light);cursor:pointer" data-action="show-cat-detail" data-category="${esc(cid)}" data-member-id="">
             <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:4px">
-              <span style="font-size:14px">${c.icon} ${esc(c.name)} <span style="font-size:11px;color:var(--c-sub)">›</span></span>
+              <span style="font-size:14px">${esc(c.name)} <span style="font-size:11px;color:var(--c-sub)">›</span></span>
               <span style="font-weight:700;color:${barColor};font-size:14px">${isNeg?"+":""}${symbol}${fmtMoney(toDisplay(Math.abs(v),baseCurrency,rates))}</span>
             </div>
-            <div style="height:6px;background:var(--c-light);border-radius:3px;overflow:hidden">
+            <div style="height:10px;background:var(--c-light);border:2px solid var(--c-ink);border-radius:0;overflow:hidden">
               <div style="height:100%;width:${pct}%;background:${barColor}"></div>
             </div>
             <div style="font-size:11px;color:var(--c-sub);text-align:right;margin-top:2px">${pct}%</div>
@@ -574,10 +551,10 @@ function renderTrip(){
             const barColor=isNeg?"var(--c-green)":color;
             html+=`<div style="padding:5px 0;cursor:pointer" data-action="show-cat-detail" data-category="${esc(cid)}" data-member-id="${esc(m.id)}">
               <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:3px;font-size:13px">
-                <span>${c.icon} ${esc(c.name)} <span style="font-size:10px;color:var(--c-sub)">›</span></span>
+                <span>${esc(c.name)} <span style="font-size:10px;color:var(--c-sub)">›</span></span>
                 <span style="font-weight:600;color:${barColor}">${isNeg?"+":""}${symbol}${fmtMoney(toDisplay(Math.abs(v),baseCurrency,rates))}</span>
               </div>
-              <div style="height:4px;background:var(--c-light);border-radius:2px;overflow:hidden">
+              <div style="height:10px;background:var(--c-light);border:2px solid var(--c-ink);border-radius:0;overflow:hidden">
                 <div style="height:100%;width:${pct}%;background:${barColor}"></div>
               </div>
             </div>`;
@@ -594,7 +571,7 @@ function renderTrip(){
     }else if(!expenses.length){
       html+=`<div class="empty"><div class="empty-icon">📊</div><p>尚無消費紀錄</p></div>`;
     }else{
-      html+=`<div class="settle-card"><h4 class="settle-title">📊 每人收支</h4>`;
+      html+=`<div class="settle-card"><h4 class="settle-title">每人收支</h4>`;
       members.forEach(m=>{
         let netTWD=(pp[m.id]?.paid||0)-(pp[m.id]?.owe||0);
         settledList.forEach(s=>{if(s.from===m.id)netTWD+=s.amount;if(s.to===m.id)netTWD-=s.amount;});
@@ -605,7 +582,7 @@ function renderTrip(){
       });
       html+=`</div>`;
 
-      html+=`<div class="settle-card"><h4 class="settle-title">💸 待結算轉帳</h4>`;
+      html+=`<div class="settle-card"><h4 class="settle-title">待結算轉帳</h4>`;
       if(!settlement.length){
         html+=`<p style="color:#bbb;text-align:center;padding:16px">大家已經扯平了！🎉</p>`;
       }else{
@@ -623,7 +600,7 @@ function renderTrip(){
       html+=`</div>`;
 
       if(settledList.length){
-        html+=`<div class="settle-card"><h4 class="settle-title">✅ 已完成結算</h4>`;
+        html+=`<div class="settle-card"><h4 class="settle-title">已完成結算</h4>`;
         const settlementsMigrating=settledList.some(s=>!s.id);
         settledList.forEach(s=>{
           const displayAmt=toDisplay(s.amount,baseCurrency,rates);
@@ -727,7 +704,7 @@ function renderModal(){
     body=`<div style="display:flex;flex-direction:column;gap:14px">
       <div><label class="label">類別</label><div class="flex flex-wrap gap-6" id="expenseCatArea">`;
     CATEGORIES.filter(c=>c.id!=="loan").forEach(c=>{
-      body+=`<button type="button" class="pill ${c.id===curCat?"active":""}" data-cat="${c.id}" data-action="set-category" data-value="${c.id}">${c.icon} ${c.name}</button>`;
+      body+=`<button type="button" class="pill ${c.id===curCat?"active":""}" data-cat="${c.id}" data-action="set-category" data-value="${c.id}">${c.name}</button>`;
     });
     body+=`</div></div>
       <div><label class="label">說明</label><input class="input" id="expDesc" placeholder="例：午餐拉麵" value="${esc(exp?.description||"")}"></div>
@@ -796,13 +773,13 @@ function renderModal(){
 
     // Personal pay account section — only show if current user is (or will be) a payer
     const myAcct=exp?getPayAccount(tripCode,STATE.myMemberId,exp.id):null;
-    body+=`<div style="border-top:1px dashed var(--c-border);padding-top:14px;margin-top:4px">
+    body+=`<div style="border-top:2px dashed var(--c-ink);padding-top:14px;margin-top:4px">
       <label class="label">💳 我的付款帳戶（只有自己看得到）</label>
       <p style="font-size:11px;color:var(--c-sub);margin-bottom:8px">記錄這筆是用哪個帳戶/卡片付的，旅伴看不到</p>
       <div class="flex flex-wrap gap-6 mb-8" id="payAcctArea">`;
     body+=`<button type="button" class="pill ${!myAcct?.type?"active":""}" data-acct="" data-action="set-pay-account" data-value="">無</button>`;
     PAY_ACCOUNTS.forEach(a=>{
-      body+=`<button type="button" class="pill ${myAcct?.type===a.id?"active":""}" data-acct="${a.id}" data-action="set-pay-account" data-value="${a.id}">${a.icon} ${a.name}</button>`;
+      body+=`<button type="button" class="pill ${myAcct?.type===a.id?"active":""}" data-acct="${a.id}" data-action="set-pay-account" data-value="${a.id}">${a.name}</button>`;
     });
     body+=`</div>
       <input class="input" id="payAcctName" placeholder="自訂帳戶名稱（如：玉山卡、悠遊卡）" value="${esc(myAcct?.name||"")}" style="font-size:13px;margin-bottom:6px">
@@ -861,7 +838,7 @@ function renderModal(){
     const c=CATEGORIES.find(x=>x.id===cd.category)||{icon:"📦",name:cd.category};
     const memberMap={};(td?.members||[]).forEach(m=>{memberMap[m.id]=m});
     const focusMember=cd.memberId?memberMap[cd.memberId]:null;
-    title=`${c.icon} ${c.name}${focusMember?` · ${focusMember.name}`:""}`;
+    title=`${c.name}${focusMember?` · ${focusMember.name}`:""}`;
     const baseCur=localStorage.getItem(`displayCurrency-${tripCode}`)||"TWD";
     const sym=displaySymbol(baseCur);
     // Filter expenses in this category; if memberId given, only those the member is part of the split
@@ -918,7 +895,7 @@ function renderModal(){
   }
 
   if(modal==="paste"){
-    title="📋 批次新增消費";
+    title="批次新增消費";
     const memberList=members.map(m=>m.name).join("、");
     const template=`旅遊成員：${memberList}
 幣別選項：TWD、JPY、USD、EUR、KRW、GBP、THB、VND、SGD、HKD、MYR、AUD、CNY
