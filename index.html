@@ -47,6 +47,8 @@ input,select,button{font-family:var(--font);outline:none}
 /* Inputs */
 .input,.paste-textarea{width:100%;padding:10px 14px;border-radius:8px;border:2.5px solid var(--c-ink);font-size:15px;background:#fff;transition:border-color .2s}.input:focus,.paste-textarea:focus{border-color:var(--c-primary);box-shadow:3px 3px 0 var(--c-primary)}
 .input-big{text-align:center;letter-spacing:6px;font-size:22px;font-family:monospace;font-weight:700}
+.input[type="date"]{text-align:left}
+.input[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0}
 .label{font-size:13px;font-weight:600;color:#888;margin-bottom:6px;display:block}
 
 /* Badges */
@@ -536,8 +538,8 @@ function renderTrip(){
             <span class="badge-avatar" style="background:${color};width:22px;height:22px;font-size:11px">${esc(String(m.name||"?")[0])}</span>
             ${esc(m.name)}${meTag}
           </h4>
-          <div style="background:var(--c-light);border-radius:10px;padding:10px 14px;margin-bottom:10px">
-            <div style="font-size:11px;color:var(--c-sub)">應負擔金額</div>
+          <div style="background:var(--c-light);border-radius:10px;padding:10px 14px;margin-bottom:10px;cursor:pointer" data-action="show-member-detail" data-member-id="${esc(m.id)}">
+            <div style="font-size:11px;color:var(--c-sub)">應負擔金額 <span style="color:var(--c-primary)">›</span></div>
             <div style="font-weight:700;color:var(--c-primary);font-size:18px">${symbol}${fmtMoney(toDisplay(expenseOwe,baseCurrency,rates))}</div>
           </div>`;
         if(!mCats.length){
@@ -835,14 +837,15 @@ function renderModal(){
 
   if(modal==="catDetail"){
     const cd=STATE.catDetail||{};
+    const allCats=!cd.category;
     const c=CATEGORIES.find(x=>x.id===cd.category)||{icon:"📦",name:cd.category};
     const memberMap={};(td?.members||[]).forEach(m=>{memberMap[m.id]=m});
     const focusMember=cd.memberId?memberMap[cd.memberId]:null;
-    title=`${c.name}${focusMember?` · ${focusMember.name}`:""}`;
+    title=allCats?`${focusMember?`${focusMember.name} · `:""}全部記帳`:`${c.name}${focusMember?` · ${focusMember.name}`:""}`;
     const baseCur=localStorage.getItem(`displayCurrency-${tripCode}`)||"TWD";
     const sym=displaySymbol(baseCur);
-    // Filter expenses in this category; if memberId given, only those the member is part of the split
-    const items=(td?.expenses||[]).filter(e=>e.category===cd.category&&(!cd.memberId||e.splits.some(s=>s.memberId===cd.memberId)));
+    // Filter expenses in this category (or all non-loan categories); if memberId given, only those the member is part of the split
+    const items=(td?.expenses||[]).filter(e=>(allCats?e.category!=="loan":e.category===cd.category)&&(!cd.memberId||e.splits.some(s=>s.memberId===cd.memberId)));
     let total=0,myShareTotal=0;
     body=`<div style="display:flex;flex-direction:column;gap:8px">`;
     if(!items.length){
@@ -870,11 +873,13 @@ function renderModal(){
         const isNeg=sign<0;
         const pref=isNeg?"+":"";
         const col=isNeg?"var(--c-green)":"var(--c-primary)";
+        const ec=CATEGORIES.find(x=>x.id===exp.category)||{name:exp.category};
+        const catTag=allCats?`<span style="display:inline-block;font-size:10px;color:var(--c-sub);border:1.5px solid var(--c-light);border-radius:6px;padding:0 5px;margin-right:5px">${esc(ec.name)}</span>`:"";
         const noteH=exp.note?`<div style="font-size:11px;color:var(--c-sub);font-style:italic;margin-top:2px">📝 ${esc(exp.note)}</div>`:"";
         body+=`<div style="padding:10px 12px;background:var(--c-bg);border-radius:10px;cursor:pointer" data-action="edit-cat-expense" data-id="${esc(exp.id)}">
           <div class="flex" style="justify-content:space-between;align-items:flex-start;gap:8px">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:14px">${esc(exp.description||c.name)}</div>
+              <div style="font-weight:600;font-size:14px">${catTag}${esc(exp.description||ec.name)}</div>
               <div style="font-size:11px;color:var(--c-sub);margin-top:2px">${esc(payerNames)} ${sign<0?"收到":"代付"} · ${esc(exp.date)}</div>
               ${myShareLine}
               ${noteH}
@@ -886,9 +891,10 @@ function renderModal(){
           </div>
         </div>`;
       });
+      const footVal=focusMember?myShareTotal:total;
       body+=`<div style="border-top:1px solid var(--c-light);margin-top:8px;padding-top:12px;display:flex;justify-content:space-between;font-weight:700">
-        <span>${focusMember?`${esc(focusMember.name)} ${expSign(items[0])<0?"應分得":"應分擔"}`:"類別總計"}</span>
-        <span style="color:var(--c-primary)">${total<0?"+":""}${sym}${fmtMoney(toDisplay(Math.abs(focusMember?myShareTotal:total),baseCur,rates))}</span>
+        <span>${focusMember?`${esc(focusMember.name)} ${allCats?"應負擔":(expSign(items[0])<0?"應分得":"應分擔")}`:"類別總計"}</span>
+        <span style="color:var(--c-primary)">${footVal<0?"+":""}${sym}${fmtMoney(toDisplay(Math.abs(footVal),baseCur,rates))}</span>
       </div>`;
     }
     body+=`<button class="btn-primary mt-12" onclick="closeModal()">關閉</button></div>`;
@@ -1095,6 +1101,11 @@ window.closeModal=function(){
 
 window.doShowCatDetail=function(category,memberId){
   STATE.catDetail={category,memberId:memberId||null};
+  openModal("catDetail");
+};
+
+window.doShowMemberDetail=function(memberId){
+  STATE.catDetail={category:null,memberId};
   openModal("catDetail");
 };
 
@@ -1387,6 +1398,7 @@ document.addEventListener("click",function(e){
     else if(action==="edit-expense")window.doEditExpense(actionEl.dataset.id);
     else if(action==="remove-member")window.doRemoveMember(actionEl.dataset.id);
     else if(action==="show-cat-detail")window.doShowCatDetail(actionEl.dataset.category,actionEl.dataset.memberId||null);
+    else if(action==="show-member-detail")window.doShowMemberDetail(actionEl.dataset.memberId);
     else if(action==="edit-cat-expense")window.doFromCatDetailEdit(actionEl.dataset.id);
     else if(action==="mark-settled")window.doMarkSettled(actionEl.dataset.from,actionEl.dataset.to,Number(actionEl.dataset.amount));
     else if(action==="unmark-settled"&&!actionEl.disabled)window.doUnmarkSettled(actionEl.dataset.id);
