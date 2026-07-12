@@ -637,10 +637,10 @@ function renderModal(){
   if(modal==="share"){
     title="邀請旅伴加入";
     body=`<div style="text-align:center">
-      <p style="font-size:14px;color:#888">把這個代碼傳給旅伴</p>
+      <p style="font-size:14px;color:#888">房間代碼</p>
       <div class="share-code">${esc(tripCode)}</div>
-      <button class="btn-primary" id="copyBtn" onclick="doCopy()">複製代碼</button>
-      <p style="font-size:12px;color:#bbb;margin-top:12px;line-height:1.6">旅伴開啟同一個網址 → 點「加入旅程」→ 輸入代碼即可同步</p>
+      <button class="btn-primary" id="copyBtn" onclick="doCopy()">複製邀請訊息</button>
+      <p style="font-size:12px;color:#bbb;margin-top:12px;line-height:1.6">會複製「網址＋代碼＋加入教學」，直接貼到 LINE 傳給旅伴即可</p>
     </div>`;
   }
 
@@ -1134,8 +1134,13 @@ window.doUnmarkSettled=async function(id){
 };
 
 window.doCopy=function(){
-  navigator.clipboard?.writeText(STATE.tripCode).then(()=>{
-    const btn=$("copyBtn");if(btn){btn.textContent="✓ 已複製";btn.style.background="#6dbf67";setTimeout(()=>{btn.textContent="複製代碼";btn.style.background=""},2000)}
+  const msg=`一起用「旅伴分帳」記帳吧！
+1. 打開 https://weiwayne12.github.io/travel-split/
+2. 點「加入旅程」，輸入代碼：${STATE.tripCode}
+建議把網頁加到手機主畫面，當 App 用更方便，教學看這裡：
+https://weiwayne12.github.io/travel-split/guide.html`;
+  navigator.clipboard?.writeText(msg).then(()=>{
+    const btn=$("copyBtn");if(btn){btn.textContent="✓ 已複製";btn.style.background="#6dbf67";setTimeout(()=>{btn.textContent="複製邀請訊息";btn.style.background=""},2000)}
   });
 };
 
