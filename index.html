@@ -52,7 +52,7 @@ input,select,button{font-family:var(--font);outline:none}
 .label{font-size:13px;font-weight:600;color:#888;margin-bottom:6px;display:block}
 
 /* Badges */
-.badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-size:14px;font-weight:700;background:var(--c-light);border:2.5px solid var(--c-ink);cursor:pointer;transition:all .15s;user-select:none;min-height:40px;touch-action:manipulation}.badge.selected{border-color:var(--c-ink);background:color-mix(in srgb,var(--badge-color) 12%,white);box-shadow:2px 2px 0 var(--c-ink)}.badge-avatar{width:24px;height:24px;border:2px solid var(--c-ink);border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-size:14px;font-weight:700;background:var(--c-light);border:2.5px solid var(--c-ink);cursor:pointer;transition:all .15s;user-select:none;min-height:40px;touch-action:manipulation}.badge.selected{border-color:var(--c-ink);background:var(--c-primary);color:#fff;box-shadow:2px 2px 0 var(--c-ink)}.badge[data-click].selected::after{content:"✓";font-weight:900;margin-left:2px}.badge[data-click]:not(.selected){background:#fff;color:var(--c-sub);border-color:#bdb5ab}.badge[data-click]:not(.selected) .badge-avatar{opacity:.4;filter:grayscale(1);border-color:#bdb5ab}.badge-avatar{width:24px;height:24px;border:2px solid var(--c-ink);border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
 .badge-lg{padding:4px 12px;font-size:14px;gap:6px;min-height:36px}
 .badge-lg .badge-avatar{width:26px;height:26px;font-size:13px}
 
