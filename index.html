@@ -712,7 +712,7 @@ function renderModal(){
       <div><label class="label">說明</label><input class="input" id="expDesc" placeholder="例：午餐拉麵" value="${esc(exp?.description||"")}"></div>
       <div class="flex gap-8">
         <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="expAmount" placeholder="0" value="${esc(exp?.amount||"")}" inputmode="decimal"></div>
-        <div style="width:110px"><label class="label">幣別</label><select class="input" id="expCurrency" style="appearance:auto" onchange="onExpCurrencyChange(this.value)">`;
+        <div style="width:140px;flex-shrink:0"><label class="label">幣別</label><select class="input" id="expCurrency" style="appearance:auto;padding-left:10px;padding-right:6px" onchange="onExpCurrencyChange(this.value)">`;
     {const allowed=getAllowedCurrencies(td);CURRENCIES.filter(c=>allowed.includes(c.code)||c.code===curCurrency).forEach(c=>{body+=`<option value="${c.code}" ${c.code===curCurrency?"selected":""}>${c.symbol} ${c.code}</option>`;});}
     const tripRate=rates[curCurrency]||1;
     const hasCustomRate=!!exp?.customRate;
@@ -807,7 +807,7 @@ function renderModal(){
     body+=`</div></div>
       <div class="flex gap-8">
         <div style="flex:1"><label class="label">金額</label><input type="number" class="input" id="loanAmount" placeholder="0" value="${esc(lf.amount||"")}" inputmode="decimal"></div>
-        <div style="width:110px"><label class="label">幣別</label><select class="input" id="loanCurrency" style="appearance:auto" onchange="onLoanCurrencyChange(this.value)">`;
+        <div style="width:140px;flex-shrink:0"><label class="label">幣別</label><select class="input" id="loanCurrency" style="appearance:auto;padding-left:10px;padding-right:6px" onchange="onLoanCurrencyChange(this.value)">`;
     {const allowed=getAllowedCurrencies(td);const curLoan=lf.currency||"TWD";CURRENCIES.filter(c=>allowed.includes(c.code)||c.code===curLoan).forEach(c=>{body+=`<option value="${c.code}" ${c.code===curLoan?"selected":""}>${c.symbol} ${c.code}</option>`;});}
     const loanCur=lf.currency||"TWD";
     const loanTripRate=rates[loanCur]||1;
