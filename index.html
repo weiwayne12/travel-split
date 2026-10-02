@@ -415,7 +415,6 @@ function renderTrip(){
           <button class="header-btn" onclick="doLeave()">←</button>
           <h1>WEIBEAR</h1>
         </div>
-        <div class="sub">${members.length} 位旅伴 · 我是 ${esc(myMember.name)}</div>
       </div>
       <div class="header-actions">
         <button class="header-btn" onclick="openModal('share')">邀請</button>
@@ -423,6 +422,7 @@ function renderTrip(){
         <button class="header-btn" onclick="doForceReload()" title="強制更新到最新版">更新</button>
       </div>
     </div>
+    <div class="sub">${members.length} 位旅伴 · 我是 ${esc(myMember.name)} · 代碼 <b style="color:#fff;letter-spacing:.05em;user-select:all;-webkit-user-select:all">${esc(STATE.tripCode)}</b></div>
     <div class="total-bar"><span class="label">總花費（${esc(baseCurrency)}）</span><span class="amount">${esc(symbol)} ${fmtMoney(toDisplay(totalTWD,baseCurrency,rates))}</span></div>
   </div>
 
